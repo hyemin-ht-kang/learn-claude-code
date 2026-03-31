@@ -1,0 +1,181 @@
+---
+title: "대화형 vs 비대화형 모드"
+description: "Claude Code의 두 가지 실행 모드와 출력 형식을 비교하고 적절한 용도를 이해합니다."
+sidebar:
+  order: 2
+learning_objectives:
+  - "대화형(REPL) 모드와 비대화형(Print) 모드의 차이를 설명할 수 있다"
+  - "세 가지 출력 형식(text, json, stream-json)의 용도를 구분할 수 있다"
+  - "환경 변수로 모드를 제어하는 방법을 안다"
+estimated_minutes: 20
+references:
+  - title: "Claude Code CLI 레퍼런스"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/cli-reference"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Claude Code는 두 가지 근본적으로 다른 실행 모드를 지원합니다. 사람이 직접 상호작용하는 **대화형 모드** 와, 스크립트나 파이프라인에서 자동화된 입력을 처리하는 **비대화형 모드** 입니다.
+
+## 대화형(REPL) 모드
+
+터미널에서 `claude`만 입력하면 대화형 모드로 진입합니다.
+
+```bash
+claude
+```
+
+### 특징
+
+- **React/Ink 터미널 UI** 활성화 — 풍부한 시각적 인터페이스
+- **스트리밍 출력** — 응답이 실시간으로 표시됨
+- **도구 확인 다이얼로그** — 위험한 작업 전 승인 요청
+- **스피너 애니메이션** — 처리 중 시각적 피드백
+- **히스토리 유지** — 대화 컨텍스트가 세션 전체에 걸쳐 유지됨
+
+```
+> 사용자 입력
+  ⠋ 처리 중...
+  ✓ 완료
+
+Claude의 응답이 스트리밍으로 표시됩니다...
+```
+
+대화형 모드는 개발자가 Claude와 실시간으로 상호작용하며 코드를 작성하고 탐색하는 기본 사용 방식입니다.
+
+## 비대화형(Print) 모드
+
+`--print` 플래그를 사용하거나 stdin으로 입력을 파이핑하면 비대화형 모드로 동작합니다.
+
+```bash
+# --print 플래그
+claude --print "현재 디렉토리의 파일 목록 보여줘"
+
+# stdin 파이핑
+echo "이 코드를 리뷰해줘" | claude
+
+# 파일에서 입력
+claude --print < instructions.txt
+```
+
+### 특징
+
+- **UI 없음** — React/Ink 렌더러 비활성화
+- **stdout 출력** — 응답이 표준 출력으로 전송됨
+- **파이프라인 친화적** — 다른 명령어와 조합 가능
+- **CI/CD 적합** — 터미널 없는 환경에서 동작
+- **단일 실행** — 한 번의 질의 후 종료
+
+```bash
+# 파이프라인에서 활용
+git diff HEAD~1 | claude --print "이 변경사항 요약해줘" > summary.txt
+
+# CI에서 코드 검사
+cat src/auth.ts | claude --print "보안 취약점 확인해줘"
+```
+
+## 두 모드 비교
+
+| 항목 | 대화형(REPL) | 비대화형(Print) |
+|------|------------|----------------|
+| **활성화** | `claude` (기본) | `--print` 또는 stdin 파이핑 |
+| **UI** | React/Ink 터미널 UI | 없음 |
+| **출력** | 터미널 렌더링 | stdout |
+| **스트리밍** | 실시간 표시 | 완성 후 출력 (기본) |
+| **도구 확인** | 대화형 다이얼로그 | 자동 처리 (DontAsk 모드) |
+| **세션** | 지속 대화 | 단일 실행 후 종료 |
+| **용도** | 개발, 탐색 | 스크립트, CI/CD, 자동화 |
+
+## 출력 형식
+
+비대화형 모드에서는 세 가지 출력 형식을 선택할 수 있습니다.
+
+### text (기본 대화형)
+
+```bash
+claude --print "안녕하세요"
+# → 안녕하세요! 무엇을 도와드릴까요?
+```
+
+사람이 읽기 쉬운 일반 텍스트 형식입니다.
+
+### json (원샷 스크립트)
+
+```bash
+claude --print --output-format json "2+2는?"
+```
+
+```json
+{
+  "type": "result",
+  "content": "4입니다.",
+  "usage": {
+    "input_tokens": 12,
+    "output_tokens": 5
+  },
+  "duration_ms": 823
+}
+```
+
+응답을 프로그래매틱하게 파싱해야 하는 스크립트에 적합합니다.
+
+```bash
+# jq로 응답만 추출
+claude --print --output-format json "Hello" | jq -r '.content'
+```
+
+### stream-json (SDK용)
+
+```bash
+claude --print --output-format stream-json "코드 작성해줘"
+```
+
+```
+{"type":"content_block_start","index":0}
+{"type":"content_block_delta","delta":{"text":"```typescript\n"}}
+{"type":"content_block_delta","delta":{"text":"function hello() {"}}
+{"type":"content_block_delta","delta":{"text":"\n  console.log('Hello')"}}
+...
+{"type":"message_stop"}
+```
+
+토큰이 생성될 때마다 JSON 라인을 출력합니다. SDK나 외부 도구가 점진적으로 응답을 렌더링할 때 사용합니다.
+
+<Aside type="tip">
+`stream-json` 형식은 웹 인터페이스나 IDE 플러그인이 Claude Code를 백엔드로 사용할 때 실시간 스트리밍 UI를 구현하기 위해 설계되었습니다.
+</Aside>
+
+## 환경 변수로 모드 제어
+
+### CLAUDE_CODE_REMOTE=1
+
+```bash
+CLAUDE_CODE_REMOTE=1 claude
+```
+
+원격/서버 환경임을 알립니다. Git 컨텍스트 수집을 건너뛰고 터미널 UI를 최소화합니다. SSH를 통한 원격 개발이나 컨테이너 환경에서 사용합니다.
+
+### CLAUDE_CODE_SIMPLE=1
+
+```bash
+CLAUDE_CODE_SIMPLE=1 claude
+```
+
+최소 UI 모드로 실행합니다. 스피너와 고급 렌더링을 비활성화하여 터미널 호환성 문제를 회피합니다. ANSI 코드를 제대로 처리하지 못하는 레거시 터미널이나 로그 파일에 출력할 때 유용합니다.
+
+## 실용적 활용 예시
+
+```bash
+# 코드 리뷰 자동화
+for file in src/**/*.ts; do
+  echo "=== $file ===" >> review.md
+  claude --print "이 TypeScript 파일의 문제점을 간략히 나열해줘:" < "$file" >> review.md
+done
+
+# PR 설명 자동 생성
+git diff main...HEAD | claude --print --output-format json \
+  "이 diff를 바탕으로 PR 설명을 작성해줘" | jq -r '.content'
+
+# 빌드 오류 분석
+npm run build 2>&1 | claude --print "이 빌드 오류의 원인과 해결책을 알려줘"
+```

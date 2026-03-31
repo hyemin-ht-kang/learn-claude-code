@@ -1,0 +1,124 @@
+---
+title: "MCP 통합"
+description: "Model Context Protocol의 개념, 전송 타입, 권한 게이팅, CLI 관리 명령어를 학습합니다."
+sidebar:
+  order: 1
+learning_objectives:
+  - "MCP의 세 가지 전송 타입(stdio, HTTP, SSE)의 차이와 사용 사례를 설명할 수 있다"
+  - "도구 네이밍 규칙(mcp__서버명__도구명)을 이해하고 적용할 수 있다"
+  - "권한 게이팅 메커니즘과 /mcp 명령어로 런타임 관리하는 방법을 안다"
+estimated_minutes: 25
+references:
+  - title: "MCP 문서"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/mcp"
+  - title: "Claude Code 컨텍스트 관리"
+    url: "https://modelcontextprotocol.io"
+---
+
+## Model Context Protocol이란?
+
+MCP(Model Context Protocol)는 Claude Code가 **외부 데이터 소스와 서비스에 연결**하기 위한 표준 프로토콜입니다. 파일시스템, 데이터베이스, GitHub, Slack 등 다양한 외부 시스템을 MCP 서버로 구현하여 Claude의 도구로 노출할 수 있습니다.
+
+```
+Claude Code ←→ MCP 프로토콜 ←→ MCP 서버 ←→ 외부 서비스
+                                  ├── 파일시스템
+                                  ├── PostgreSQL
+                                  ├── GitHub API
+                                  └── Slack
+```
+
+## 도구 네이밍 규칙
+
+MCP 서버가 제공하는 도구는 **`mcp__<서버명>__<도구명>`** 형식으로 Claude에게 노출됩니다.
+
+```
+mcp__filesystem__read_file
+mcp__filesystem__write_file
+mcp__github__create_pull_request
+mcp__postgres__execute_query
+mcp__slack__send_message
+```
+
+이 네이밍 규칙 덕분에 내장 도구와 MCP 도구를 명확히 구분할 수 있으며, 권한 설정에서도 MCP 도구만 선택적으로 제어할 수 있습니다.
+
+## 세 가지 전송 타입
+
+| 전송 타입 | 설명 | 사용 사례 |
+|-----------|------|-----------|
+| **stdio** | 로컬 프로세스와 표준 입출력으로 통신 | 로컬 CLI 도구, 가장 일반적 |
+| **HTTP** | 원격 서버에 HTTP POST 요청 | 클라우드 서비스, API 게이트웨이 |
+| **SSE** | Server-Sent Events, 단방향 스트림 | 실시간 데이터, 이벤트 스트림 |
+
+```json
+// stdio 서버 예시 (로컬 프로세스)
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+    }
+  }
+}
+
+// HTTP 서버 예시 (원격)
+{
+  "mcpServers": {
+    "remote-api": {
+      "type": "http",
+      "url": "https://mcp.example.com/v1"
+    }
+  }
+}
+```
+
+## 권한 게이팅
+
+MCP 도구는 기본적으로 **실행 전 사용자 승인**이 필요합니다. Claude가 MCP 도구를 호출하려 할 때 권한 프롬프트가 표시됩니다.
+
+| 응답 | 동작 |
+|------|------|
+| **허용** | 이번 한 번만 실행 허용 |
+| **거부** | 실행 차단, 에러 반환 |
+| **항상 허용** | 이후 동일 도구 자동 승인 |
+
+`settings.json`의 `permissions.allow`에 MCP 도구를 추가하면 자동으로 승인됩니다.
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__filesystem__read_file",
+      "mcp__github__*"
+    ]
+  }
+}
+```
+
+## CLI 서버 관리
+
+```bash
+# MCP 서버 추가
+claude mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem /home
+
+# HTTP 서버 추가
+claude mcp add my-api --type http --url https://mcp.example.com
+
+# 서버 목록 확인
+claude mcp list
+
+# 서버 제거
+claude mcp remove filesystem
+```
+
+## 런타임 관리
+
+실행 중에도 `/mcp` 명령어로 서버를 관리할 수 있습니다.
+
+| 명령어 | 설명 |
+|--------|------|
+| `/mcp` | 연결된 서버 상태 확인 |
+| `/mcp enable <서버명>` | 서버 활성화 |
+| `/mcp disable <서버명>` | 서버 비활성화 |
+| `/mcp reconnect <서버명>` | 서버 재연결 |
+
+공식 MCP 서버 레지스트리는 `modelcontextprotocol.io`에서 확인할 수 있으며, 수백 개의 커뮤니티 서버가 등록되어 있습니다.

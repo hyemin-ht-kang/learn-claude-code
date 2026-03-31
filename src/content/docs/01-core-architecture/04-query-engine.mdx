@@ -1,0 +1,176 @@
+---
+title: "쿼리 엔진"
+description: "query.ts 모듈의 역할과 동작을 이해합니다. 스트리밍, 도구 디스패치, 예산 관리, 컴팩션 트리거를 살펴봅니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "쿼리 엔진이 토큰 스트리밍을 처리하는 방식을 설명할 수 있다"
+  - "maxResultSizeChars의 역할과 임시 파일 저장 메커니즘을 이해할 수 있다"
+  - "컴팩션이 언제 트리거되는지 설명할 수 있다"
+estimated_minutes: 25
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 쿼리 엔진의 역할
+
+`query.ts` 는 에이전틱 루프에서 **모델과의 실제 통신** 을 담당하는 모듈입니다. 단순한 API 래퍼가 아니라 스트리밍 처리, 도구 디스패치, 예산 관리, 컨텍스트 포화 감지까지 담당하는 핵심 엔진입니다.
+
+```
+[에이전틱 루프]
+      ↓ 대화 히스토리 전달
+[query.ts]
+      ↓ API 스트림 수신
+      ├─ 텍스트 블록 → 터미널 실시간 출력
+      ├─ tool_use 블록 → 도구 핸들러 디스패치
+      └─ 결과 수집 → 다음 API 호출 준비
+```
+
+## 실시간 토큰 스트리밍
+
+Claude Code는 모델 응답을 **스트리밍** 방식으로 수신합니다. API 응답이 완전히 도착하기 전에 터미널에 텍스트를 점진적으로 출력합니다.
+
+```typescript
+// 스트리밍 처리 흐름 (단순화)
+for await (const chunk of stream) {
+  if (chunk.type === 'content_block_delta') {
+    if (chunk.delta.type === 'text_delta') {
+      process.stdout.write(chunk.delta.text)  // 즉시 출력
+    } else if (chunk.delta.type === 'tool_use') {
+      accumulateToolInput(chunk.delta)        // 도구 입력 누적
+    }
+  }
+}
+```
+
+이 방식의 장점:
+- 긴 응답도 즉각적인 피드백 제공
+- 사용자가 원하지 않는 방향이면 일찍 중단 가능
+- 도구 파라미터가 완성되는 즉시 디스패치 준비
+
+### 출력 형식 옵션
+
+`--output-format` 플래그로 출력 형식을 제어합니다.
+
+| 형식 | 플래그 | 용도 |
+|------|--------|------|
+| `text` | 기본값 | 대화형 터미널 출력 |
+| `json` | `--output-format json` | 구조화된 단일 JSON |
+| `stream-json` | `--output-format stream-json` | 이벤트별 JSON 스트림 |
+
+`stream-json` 은 Claude Code를 프로그래밍 방식으로 제어할 때 유용합니다. 각 이벤트(텍스트, 도구 호출, 결과 등)가 별도 JSON 라인으로 출력됩니다.
+
+## 도구 디스패치
+
+모델이 `tool_use` 블록을 생성하면 쿼리 엔진이 적절한 도구 핸들러로 **디스패치** 합니다.
+
+```typescript
+// 도구 디스패치 (단순화)
+async function dispatchTool(toolUse: ToolUse): Promise<ToolResult> {
+  const tool = registeredTools.get(toolUse.name)
+  if (!tool) {
+    return { error: `Unknown tool: ${toolUse.name}` }
+  }
+
+  const permission = await tool.checkPermissions(toolUse.input)
+  if (permission === 'deny') {
+    return { error: 'Permission denied' }
+  }
+  if (permission === 'ask') {
+    const approved = await promptUser(toolUse)
+    if (!approved) return { error: 'User rejected' }
+  }
+
+  return tool.execute(toolUse.input)
+}
+```
+
+여러 `tool_use` 블록이 한 응답에 포함된 경우, 쿼리 엔진은 이를 **병렬로 실행** 할 수 있습니다. 단, 의존성이 있는 도구(예: Write 후 Read)는 순차 실행합니다.
+
+## 예산 관리
+
+쿼리 엔진은 턴당 소비되는 리소스를 추적합니다.
+
+### 토큰 예산
+
+| 항목 | 기본 제한 | 설명 |
+|------|----------|------|
+| 입력 토큰 | 모델별 상이 | 전체 컨텍스트 윈도우 크기 |
+| 출력 토큰 | 32,000 | 단일 응답 최대 길이 |
+| 턴당 도구 호출 | 무제한 | 단, 실용적 제한 있음 |
+
+### maxResultSizeChars
+
+도구 실행 결과가 **너무 크면** 컨텍스트 윈도우를 과도하게 소비합니다. `maxResultSizeChars` 속성이 이를 제한합니다.
+
+```typescript
+class BashTool {
+  maxResultSizeChars = 100_000  // 100KB 제한
+
+  async execute(input: BashInput): Promise<ToolResult> {
+    const output = await runCommand(input.command)
+
+    if (output.length > this.maxResultSizeChars) {
+      // 임시 파일에 저장
+      const tmpPath = await writeTempFile(output)
+      return {
+        content: `Output too large (${output.length} chars). Saved to: ${tmpPath}`,
+        truncated: true
+      }
+    }
+
+    return { content: output }
+  }
+}
+```
+
+초과 시 모델은 파일 경로를 받고, 필요하면 `Read` 도구로 내용을 확인할 수 있습니다.
+
+## 컴팩션 트리거
+
+대화가 길어지면 컨텍스트 윈도우가 포화 상태에 이릅니다. 쿼리 엔진은 **사용률을 모니터링** 하고 임계값 도달 시 컴팩션을 트리거합니다.
+
+```
+컨텍스트 사용률 모니터링
+       ↓
+  80% 도달 시 경고
+       ↓
+  90% 도달 시 자동 컴팩션
+       ↓
+  오래된 메시지를 요약으로 압축
+       ↓
+  원본은 디스크에 보존, 메모리에서는 요약만 유지
+```
+
+### 컴팩션 동작
+
+1. 가장 오래된 메시지들을 별도 API 호출로 요약
+2. 요약문이 원본 메시지들을 대체
+3. 최근 N개 메시지는 항상 전체 보존 (연속성 유지)
+4. 원본 트랜스크립트는 `~/.claude/` 에 그대로 보존
+
+```bash
+# 컴팩션 수동 트리거
+/compact
+
+# 컴팩션 후 상태 확인 (컨텍스트 사용률 표시)
+# 터미널 UI 우측 상단에 표시됨
+```
+
+## 쿼리 엔진 설정 튜닝
+
+```json
+// settings.json에서 조정 가능한 항목
+{
+  "maxTokens": 16000,
+  "compactionThreshold": 0.85,
+  "streamingEnabled": true
+}
+```
+
+| 설정 | 추천값 | 이유 |
+|------|--------|------|
+| 컴팩션 임계값 낮춤 | 0.75 | 자주 컴팩션하여 품질 유지 |
+| maxResultSizeChars | 50,000 | 대용량 파일이 많은 프로젝트 |
+| 스트리밍 비활성화 | CI 환경 | 로그 파싱 용이 |

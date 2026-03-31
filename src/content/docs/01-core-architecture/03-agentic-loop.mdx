@@ -1,0 +1,186 @@
+---
+title: "에이전틱 루프"
+description: "Claude Code의 핵심 동작 원리인 6단계 에이전틱 루프를 이해합니다. 입력 수신부터 최종 응답 생성까지 전체 흐름을 살펴봅니다."
+sidebar:
+  order: 3
+learning_objectives:
+  - "에이전틱 루프의 6단계를 순서대로 설명할 수 있다"
+  - "컨텍스트 어셈블리에서 포함되는 정보의 종류를 파악할 수 있다"
+  - "루프가 종료되는 조건과 반복되는 조건을 구분할 수 있다"
+estimated_minutes: 30
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 에이전틱 루프란
+
+에이전틱 루프(Agentic Loop)는 Claude Code의 심장부입니다. 사용자의 요청을 받아 모델이 추론하고, 도구를 실행하고, 결과를 다시 모델에 피드백하는 사이클이 완료될 때까지 **반복** 됩니다.
+
+단 한 번의 API 호출로 끝나는 일반 챗봇과 달리, Claude Code는 복잡한 작업을 완수하기 위해 이 루프를 수십 회 이상 순환할 수 있습니다.
+
+## 6단계 에이전틱 루프
+
+| 단계 | 이름 | 설명 |
+|------|------|------|
+| 1 | 사용자 입력 | 메시지 수신 및 히스토리 추가 |
+| 2 | 컨텍스트 어셈블리 | 시스템 프롬프트 구성 |
+| 3 | 모델 추론 | Anthropic API 호출 |
+| 4 | 권한 평가 | 도구 실행 허가 결정 |
+| 5 | 도구 실행 | 승인된 도구 실행 |
+| 6 | 반복 | 추가 도구 호출 또는 최종 응답 |
+
+## 단계별 상세 설명
+
+### Step 1: 사용자 입력
+
+메시지는 두 가지 경로로 수신됩니다.
+
+- **대화형 모드**: React/Ink 터미널 UI의 입력 필드에서 엔터 키 입력
+- **비대화형 모드**: `--print "프롬프트"` 플래그 또는 `stdin` 파이프
+
+수신된 메시지는 즉시 **대화 히스토리 배열** 에 `role: "user"` 형태로 추가됩니다.
+
+```json
+// 대화 히스토리 예시
+[
+  { "role": "user", "content": "src/utils.ts 파일을 읽어줘" },
+  { "role": "assistant", "content": [
+    { "type": "tool_use", "name": "Read", "input": { "file_path": "src/utils.ts" } }
+  ]},
+  { "role": "user", "content": [
+    { "type": "tool_result", "content": "// utils.ts 내용..." }
+  ]}
+]
+```
+
+### Step 2: 컨텍스트 어셈블리
+
+모델에 전달할 시스템 프롬프트를 동적으로 구성합니다. 두 함수가 협력합니다.
+
+**`getSystemContext()`** — 정적 컨텍스트:
+- 현재 날짜와 시간
+- 운영체제 및 셸 정보
+- 사용 가능한 도구 목록과 설명
+- 권한 모드 (기본값/자동승인/읽기전용)
+
+**`getUserContext()`** — 동적 컨텍스트:
+- **Git 상태**: 현재 브랜치, 최근 커밋, 변경된 파일 목록
+- **CLAUDE.md 메모리**: 현재 디렉토리와 상위 디렉토리의 모든 CLAUDE.md 파일 내용
+- **프로젝트 메모리**: `.claude/agent-memory/` 에 저장된 에이전트 메모리
+
+```typescript
+// 컨텍스트 캐싱 (단순화)
+const getUserContext = lodash.memoize(
+  async (cwd: string) => {
+    const gitStatus = await getGitStatus(cwd)
+    const memory = await loadMemoryFiles(cwd)
+    return buildContextString(gitStatus, memory)
+  }
+)
+```
+
+`lodash/memoize` 로 캐싱하여 동일한 작업 디렉토리에서는 반복 계산을 피합니다.
+
+### Step 3: 모델 추론
+
+조립된 컨텍스트와 전체 대화 히스토리를 Anthropic API로 전송합니다.
+
+```
+POST https://api.anthropic.com/v1/messages
+{
+  "model": "claude-opus-4-5",
+  "system": "<assembled context>",
+  "messages": [...conversation history...],
+  "tools": [...registered tools...]
+}
+```
+
+모델은 다음 중 하나를 반환합니다.
+
+- **`text` 블록**: 사용자에게 직접 전달되는 텍스트 응답
+- **`tool_use` 블록**: 실행할 도구와 파라미터
+
+### Step 4: 권한 평가
+
+`tool_use` 블록이 있으면 각 도구의 `checkPermissions()` 메서드를 호출합니다.
+
+| 반환값 | 의미 | 동작 |
+|--------|------|------|
+| `allow` | 자동 승인 | 즉시 실행 |
+| `ask` | 사용자 확인 필요 | 승인/거부 프롬프트 표시 |
+| `deny` | 차단 | 실행 거부, 오류 반환 |
+
+권한 결과는 설정된 규칙(`allow`/`deny` 목록)과 현재 권한 모드(`--dangerously-skip-permissions` 등)에 따라 결정됩니다.
+
+### Step 5: 도구 실행
+
+승인된 도구를 실행하고 결과를 `tool_result` 블록으로 대화 히스토리에 추가합니다.
+
+```json
+{
+  "role": "user",
+  "content": [{
+    "type": "tool_result",
+    "tool_use_id": "toolu_01abc...",
+    "content": "파일 내용 또는 실행 결과..."
+  }]
+}
+```
+
+결과 크기가 `maxResultSizeChars` 를 초과하면 임시 파일에 저장하고 경로만 모델에 전달합니다.
+
+### Step 6: 반복 판단
+
+Step 5 이후 다시 Step 3으로 돌아가 모델을 재호출합니다. 이 루프는 다음 조건까지 계속됩니다.
+
+**루프 종료 조건:**
+- 모델이 `tool_use` 없이 순수 `text` 블록만 반환할 때
+- 턴당 최대 토큰 예산 초과
+- 사용자가 도구 실행을 거부(`deny`)할 때
+- 오류 발생으로 루프 중단
+
+**루프 계속 조건:**
+- 모델이 추가 도구 호출 `tool_use` 블록을 포함할 때
+
+## 전체 흐름 시각화
+
+```
+사용자: "테스트를 실행하고 실패한 것을 고쳐줘"
+    ↓
+[어셈블리] 시스템 프롬프트 + Git 상태 + CLAUDE.md
+    ↓
+[추론] → tool_use: Bash("npm test")
+    ↓
+[권한] → ask → 사용자 승인
+    ↓
+[실행] → 테스트 결과 반환 (3개 실패)
+    ↓
+[추론] → tool_use: Read("src/auth.ts")
+    ↓
+[권한] → allow (자동 승인)
+    ↓
+[실행] → 파일 내용 반환
+    ↓
+[추론] → tool_use: Edit("src/auth.ts", ...)
+    ↓
+[권한] → ask → 사용자 승인
+    ↓
+[실행] → 파일 수정 완료
+    ↓
+[추론] → tool_use: Bash("npm test")
+    ↓
+[실행] → 테스트 전부 통과
+    ↓
+[추론] → text: "3개 테스트를 수정했습니다..."
+    ↓
+루프 종료 → 사용자에게 최종 응답 표시
+```
+
+## 핵심 인사이트
+
+에이전틱 루프를 이해하면 Claude Code에 더 효과적인 지시를 줄 수 있습니다.
+
+- **구체적인 목표** 를 제시하면 루프 반복 횟수가 줄어듭니다
+- **CLAUDE.md** 에 프로젝트 컨텍스트를 작성하면 Step 2에서 자동으로 포함됩니다
+- **권한 모드** 를 신중하게 설정하면 Step 4의 승인 대기를 줄일 수 있습니다

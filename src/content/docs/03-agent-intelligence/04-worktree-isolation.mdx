@@ -1,0 +1,163 @@
+---
+title: "워크트리 격리"
+description: "Git worktree 기반의 에이전트 격리 메커니즘을 이해합니다. 독립적인 저장소 복사본에서 작업하고 변경사항을 병합하는 방법을 살펴봅니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "워크트리 격리가 일반 에이전트 실행과 어떻게 다른지 설명할 수 있다"
+  - "워크트리 라이프사이클의 각 단계를 이해할 수 있다"
+  - "워크트리 격리를 사용해야 할 시점과 그렇지 않아야 할 시점을 구분할 수 있다"
+estimated_minutes: 25
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 워크트리 격리란
+
+`isolation: "worktree"` 설정은 에이전트가 **Git worktree 기반의 독립된 저장소 복사본** 에서 작업하도록 합니다. 에이전트의 모든 변경사항은 별도 워크트리에 격리되며, 명시적으로 병합하기 전까지 메인 저장소에 영향을 주지 않습니다.
+
+```typescript
+// 워크트리 격리 활성화
+Task({
+  description: "실험적 리팩토링",
+  prompt: "UserService를 함수형 패턴으로 리팩토링해주세요...",
+  isolation: "worktree"  // 독립 Git worktree 생성
+})
+```
+
+## Git Worktree 개념
+
+Git worktree는 **하나의 Git 저장소에서 여러 작업 디렉토리** 를 동시에 사용하는 기능입니다. 각 worktree는 독립적인 파일 시스템 상태를 가지지만 같은 Git 히스토리를 공유합니다.
+
+```bash
+# 일반 Git worktree 사용 예시
+git worktree add /tmp/feature-branch feature/new-auth
+# → /tmp/feature-branch/에 feature/new-auth 브랜치가 체크아웃됨
+# → 메인 디렉토리와 독립적으로 파일 수정 가능
+
+git worktree list
+# → /project         abc123 [main]
+# → /tmp/feature-branch  def456 [feature/new-auth]
+
+git worktree remove /tmp/feature-branch
+```
+
+Claude Code는 이 Git 기능을 활용하여 에이전트별 격리 환경을 자동으로 관리합니다.
+
+## 워크트리 라이프사이클
+
+### 1단계: WorktreeCreate 이벤트
+
+Task 도구가 `isolation: "worktree"` 로 호출되면 자동으로 새 worktree가 생성됩니다.
+
+```
+현재 브랜치: main (커밋 abc123)
+    ↓ WorktreeCreate 이벤트 발생
+새 worktree 생성:
+  경로: /tmp/claude-worktree-<uuid>/
+  브랜치: claude/agent-<task-id>
+  기반: 현재 main 브랜치
+```
+
+### 2단계: 에이전트 독립 작업
+
+에이전트는 새 worktree 경로를 작업 디렉토리로 사용합니다.
+
+```
+에이전트 작업 디렉토리: /tmp/claude-worktree-a1b2c3/
+  ├── src/          ← 메인 저장소의 복사본
+  ├── tests/
+  └── package.json
+
+메인 저장소: /project/
+  ├── src/          ← 에이전트 변경사항과 완전히 격리됨
+  ├── tests/
+  └── package.json
+```
+
+에이전트가 파일을 수정해도 `/project/` 의 파일은 전혀 변경되지 않습니다.
+
+### 3단계: 변경사항 검토
+
+에이전트 작업이 완료되면 코디네이터(또는 사용자)가 변경사항을 검토합니다.
+
+```bash
+# 워크트리에서 변경된 내용 확인
+git -C /tmp/claude-worktree-a1b2c3/ diff main
+
+# 파일별 변경 요약
+git -C /tmp/claude-worktree-a1b2c3/ diff --stat main
+```
+
+### 4단계: 병합 또는 폐기
+
+검토 후 두 가지 선택지가 있습니다.
+
+**병합 (수락):**
+```bash
+# 워크트리 브랜치를 메인에 병합
+git merge claude/agent-<task-id>
+# 또는 cherry-pick으로 선택적 적용
+git cherry-pick <commit-hash>
+```
+
+**폐기 (거부):**
+```bash
+# 워크트리 제거 (변경사항 전체 폐기)
+git worktree remove /tmp/claude-worktree-a1b2c3/
+git branch -D claude/agent-<task-id>
+```
+
+### 5단계: WorktreeRemove 이벤트
+
+병합이든 폐기든, 최종적으로 워크트리가 정리됩니다.
+
+```
+WorktreeRemove 이벤트 발생
+  → 임시 디렉토리 삭제
+  → Git worktree 등록 해제
+  → 임시 브랜치 삭제 (선택적)
+```
+
+## 워크트리 격리 사용 시점
+
+### 사용해야 할 때
+
+```
+✓ 대규모 리팩토링 실험
+  → 잘못되면 전체 폐기, 잘되면 병합
+
+✓ 여러 에이전트가 같은 파일을 수정할 가능성이 있을 때
+  → 충돌 없이 독립 작업 후 순차 병합
+
+✓ 병합 전 사람이 직접 검토해야 하는 변경사항
+  → PR 워크플로와 유사한 검토 과정
+
+✓ 실험적 접근법을 안전하게 시험할 때
+  → 메인 코드베이스 오염 없이 실험
+```
+
+### 사용하지 않아야 할 때
+
+```
+✗ 빠른 단순 수정 (파일 1-2개 변경)
+  → 워크트리 생성 오버헤드가 더 큼
+
+✗ Git 저장소가 아닌 디렉토리에서 작업
+  → worktree는 Git 저장소 필수
+
+✗ 즉각적인 변경이 다른 도구에서 보여야 할 때
+  → 격리로 인해 메인 저장소에 즉시 반영 안 됨
+```
+
+## 격리 수준 비교
+
+| 항목 | `isolation: "none"` | `isolation: "worktree"` |
+|------|-------------------|------------------------|
+| 작업 디렉토리 | 현재 디렉토리 | 새 임시 워크트리 |
+| 파일 변경 즉시 반영 | ✓ 즉시 반영 | ✗ 격리됨 |
+| 실수로 인한 위험 | 즉각적 영향 | 안전하게 폐기 가능 |
+| 병렬 에이전트 충돌 | 충돌 가능 | 충돌 없음 |
+| 오버헤드 | 없음 | worktree 생성/삭제 시간 |
+| Git 저장소 필수 | ✗ 불필요 | ✓ 필수 |

@@ -1,0 +1,198 @@
+---
+title: "샌드박스와 안전장치"
+description: "Claude Code의 로컬 실행 원칙과 도구별 안전 검사 메커니즘을 학습합니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "Claude Code의 로컬 실행 원칙과 데이터 전송이 발생하는 경우를 구분할 수 있다"
+  - "Git 안전 프로토콜의 핵심 제약을 설명할 수 있다"
+  - "Read, Edit, Write 도구의 안전 검사 요구사항을 이해한다"
+estimated_minutes: 20
+references:
+  - title: "Claude Code 보안 가이드"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/security"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import Quiz from '../../../components/learning/Quiz';
+
+Claude Code는 **로컬 실행 원칙** 을 바탕으로 설계되었습니다. AI가 강력한 도구를 다루는 환경에서 데이터 유출과 의도치 않은 시스템 변경을 방지하기 위한 여러 안전장치가 내장되어 있습니다.
+
+## 로컬 실행 원칙
+
+Claude Code의 모든 도구 실행은 **사용자의 터미널 프로세스** 에서 직접 이루어집니다. 원격 서버나 클라우드 샌드박스가 없습니다.
+
+```
+사용자 터미널
+    ↓
+Claude Code 프로세스
+    ↓
+도구 실행 (로컬)
+    - 파일 읽기/쓰기 → 로컬 파일시스템
+    - Bash 실행 → 로컬 셸
+    - 자격 증명 접근 → 로컬 환경변수
+```
+
+이 원칙의 의미는:
+- **파일이 로컬에 남는다** — 소스 코드가 Anthropic 서버로 전송되지 않음
+- **셸이 로컬에서 실행된다** — 명령어가 사용자 환경에서 직접 실행됨
+- **자격 증명이 로컬에 유지된다** — API 키, SSH 키가 외부로 전송되지 않음
+
+<Aside type="tip">
+코드 자체는 로컬에서 처리되지만, Claude에게 보내는 **메시지와 컨텍스트** 는 Anthropic API로 전송됩니다. 민감한 코드를 대화에 붙여넣을 때는 이 점을 고려하세요.
+</Aside>
+
+## 데이터 전송이 발생하는 경우
+
+다음 세 가지 경우에만 외부로 데이터가 전송됩니다.
+
+### 1. WebFetch
+
+```
+WebFetch("https://api.example.com/data")
+→ 외부 URL로 HTTP 요청 발생
+→ 응답 데이터가 컨텍스트로 수신됨
+```
+
+### 2. WebSearch
+
+```
+WebSearch("Claude Code 최신 업데이트")
+→ 검색 엔진 API 호출
+→ 검색 결과가 컨텍스트로 수신됨
+```
+
+### 3. MCP 서버
+
+```
+mcp__github__get_repo("anthropics/claude-code")
+→ MCP 서버를 통한 외부 API 호출
+→ 결과가 컨텍스트로 수신됨
+```
+
+이 세 경우 외에는 모든 데이터가 로컬에서 처리됩니다.
+
+## Git 안전 프로토콜
+
+Git 작업에는 되돌리기 어려운 작업들이 있습니다. Claude Code는 다음 제약을 강제합니다.
+
+### 푸시된 커밋 수정 금지
+
+```bash
+# 차단됨: 이미 푸시된 커밋 수정
+git commit --amend  # 이미 원격에 있는 커밋에 대해
+git rebase -i HEAD~5  # 원격과 분기 발생 가능
+```
+
+푸시된 커밋을 수정하면 팀원의 작업 히스토리가 깨질 수 있습니다.
+
+### 훅 건너뛰기 금지
+
+```bash
+# 차단됨: 커밋 훅 무시
+git commit --no-verify
+git push --no-verify
+```
+
+`--no-verify`는 pre-commit, pre-push 훅을 건너뛰어 코드 품질 검사와 보안 스캔을 우회합니다.
+
+### main/master 강제 푸시 금지
+
+```bash
+# 차단됨: 기본 브랜치 강제 푸시
+git push --force origin main
+git push -f origin master
+```
+
+강제 푸시는 팀원이 기반으로 한 히스토리를 삭제할 수 있습니다.
+
+<Aside type="caution">
+사용자가 명시적으로 Git 안전 프로토콜 우회를 요청해도 Claude Code는 이를 거부합니다. 정말 필요하다면 사용자가 직접 터미널에서 실행해야 합니다.
+</Aside>
+
+## 도구별 안전 검사
+
+각 파일 도구에는 고유한 안전 전제조건이 있습니다.
+
+### Read 도구
+
+```
+제약: 파일만 읽을 수 있음, 디렉토리 직접 읽기 불가
+```
+
+```typescript
+// 올바른 사용
+Read("/path/to/file.ts")
+
+// 오류: 디렉토리는 Bash(ls) 또는 Glob 사용
+Read("/path/to/directory/")  // ← 실패
+```
+
+디렉토리를 읽으려면 `Bash(ls)` 또는 `Glob` 도구를 사용해야 합니다.
+
+### Edit 도구
+
+```
+전제조건: 편집 전에 반드시 Read로 파일을 먼저 읽어야 함
+```
+
+```
+올바른 순서:
+1. Read("config.json")       ← 먼저 읽기
+2. Edit("config.json", ...)  ← 그 다음 편집
+
+잘못된 순서:
+1. Edit("config.json", ...)  ← 실패 (Read 없이 편집 시도)
+```
+
+Read 없이 Edit을 시도하면 오류가 발생합니다. 이 제약은 Claude가 파일 내용을 실제로 이해하고 편집하도록 강제합니다.
+
+### Write 도구
+
+```
+전제조건: 기존 파일에 Write 사용 시 사전 Read 필수
+새 파일 생성은 Read 불필요
+```
+
+```
+기존 파일 덮어쓰기:
+1. Read("data.json")        ← 먼저 읽기
+2. Write("data.json", ...)  ← 덮어쓰기
+
+새 파일 생성:
+1. Write("new-file.ts", ...) ← 바로 생성 가능
+```
+
+| 도구 | 전제조건 | 이유 |
+|------|---------|------|
+| **Read** | 없음 | 읽기는 안전 |
+| **Edit** | 사전 Read 필수 | 내용 파악 후 편집 |
+| **Write (기존)** | 사전 Read 필수 | 덮어쓰기 전 확인 |
+| **Write (신규)** | 없음 | 새 파일 생성 |
+
+## 안전 검사 요약
+
+Claude Code의 안전 체계는 여러 층으로 구성됩니다.
+
+```
+계층 1: 로컬 실행 원칙
+  → 데이터가 로컬에 머무름
+
+계층 2: 권한 모드
+  → 위험 작업에 확인 요청
+
+계층 3: 권한 규칙
+  → 특정 패턴 차단/허용
+
+계층 4: Git 안전 프로토콜
+  → 되돌리기 어려운 Git 작업 차단
+
+계층 5: 도구별 전제조건
+  → Read-before-Edit/Write 강제
+```
+
+이 다층 구조 덕분에 하나의 계층이 실패해도 다른 계층이 보호를 제공합니다.
+
+---
+
+<Quiz client:load section="04-permissions-security" />

@@ -1,0 +1,117 @@
+---
+title: "모델 시스템"
+description: "Claude 모델 패밀리, 작업 복잡도에 따른 자동 라우팅, 토큰 예산 관리, 비용 최적화 전략을 학습합니다."
+sidebar:
+  order: 1
+learning_objectives:
+  - "Opus/Sonnet/Haiku 모델 패밀리의 특성과 적합한 사용 사례를 구분할 수 있다"
+  - "set_model 제어 작업으로 세션 중 모델을 동적으로 전환하는 방법을 안다"
+  - "토큰 예산 관리와 Fast 모드의 차이를 설명할 수 있다"
+estimated_minutes: 20
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+  - title: "Models"
+    url: "https://docs.anthropic.com/ko/docs/about-claude/models"
+---
+
+## Claude 모델 패밀리
+
+Claude Code는 세 가지 모델 계열을 지원하며, 작업 특성에 따라 최적의 모델을 선택해야 합니다.
+
+| 모델 | 식별자 예시 | 특성 | 적합한 작업 |
+|------|-------------|------|------------|
+| **Opus** | `claude-opus-4-5` | 최고 추론 능력, 느림, 고비용 | 복잡한 아키텍처 설계, 심층 분석 |
+| **Sonnet** | `claude-sonnet-4-5` | 균형잡힌 성능, 표준 속도 | 일반 코딩, 코드 리뷰, 리팩토링 |
+| **Haiku** | `claude-haiku-4-5` | 빠름, 저비용, 높은 처리량 | 간단한 조회, 워커 에이전트 |
+
+```
+비용/성능 비율:
+Haiku ──────────────── 저비용, 빠름
+Sonnet ──────────────── 중간
+Opus ────────────────── 고비용, 깊은 추론
+```
+
+## 자동 모델 라우팅
+
+Claude Code는 작업의 복잡도를 분석하여 **자동으로 적합한 모델을 선택**합니다.
+
+```
+작업 분석 → 복잡도 평가 → 모델 선택
+  │
+  ├── 단순 파일 읽기 → Haiku
+  ├── 일반 코딩 작업 → Sonnet
+  └── 복잡한 설계 결정 → Opus
+```
+
+멀티에이전트 시스템에서는 오케스트레이터가 Opus를 사용하고, 워커 에이전트들은 Haiku를 사용하는 패턴이 비용 효율적입니다.
+
+## set_model 제어 작업
+
+세션 중에 모델을 동적으로 전환할 수 있습니다.
+
+```typescript
+// SDK를 통한 모델 전환
+await sendControlRequest({
+  type: 'control',
+  subtype: 'set_model',
+  model: 'claude-opus-4-5'
+});
+
+// 복잡한 분석 수행 후 다시 Sonnet으로 전환
+await sendControlRequest({
+  type: 'control',
+  subtype: 'set_model',
+  model: 'claude-sonnet-4-5'
+});
+```
+
+```bash
+# CLI에서 모델 지정
+claude --model claude-opus-4-5 "복잡한 시스템 설계를 도와주세요"
+```
+
+## 토큰 예산 관리
+
+각 턴과 도구 호출에 **토큰 예산**을 설정하여 비용을 통제합니다.
+
+| 설정 | 설명 |
+|------|------|
+| `maxTokensPerTurn` | 턴당 최대 출력 토큰 수 |
+| `maxToolCallsPerTurn` | 턴당 최대 도구 호출 횟수 |
+| `totalBudgetUSD` | 세션 총 비용 한도 (USD) |
+
+```json
+{
+  "tokenBudget": {
+    "maxTokensPerTurn": 4096,
+    "maxToolCallsPerTurn": 20,
+    "totalBudgetUSD": 1.00
+  }
+}
+```
+
+예산 초과 시 세션이 자동으로 종료되거나 사용자에게 알림이 표시됩니다.
+
+## Fast 모드
+
+Fast 모드는 **모델을 변경하지 않고** 동일한 모델에서 더 빠른 출력을 얻는 설정입니다.
+
+```json
+{
+  "fastMode": true
+}
+```
+
+Fast 모드 활성화 시 응답 품질보다 속도를 우선합니다. 스트리밍 응답이 더 빠르게 시작되지만, 내부적으로 동일한 모델이 사용됩니다. 이는 Haiku로 다운그레이드하는 것과 다릅니다.
+
+## 비용 최적화 전략
+
+| 전략 | 방법 | 예상 절감 |
+|------|------|-----------|
+| 캐시 활용 | 시스템 프롬프트 캐싱 | 최대 90% |
+| 모델 라우팅 | 단순 작업에 Haiku 사용 | 최대 95% |
+| 컨텍스트 압축 | 불필요한 히스토리 제거 | 20-40% |
+| 배치 처리 | 여러 요청을 묶어 처리 | 처리량 향상 |
+
+프로덕션 환경에서는 `result` 메시지의 비용 데이터를 수집하여 대시보드로 모니터링하는 것을 권장합니다.

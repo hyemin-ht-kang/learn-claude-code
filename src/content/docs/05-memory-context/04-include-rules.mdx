@@ -1,0 +1,231 @@
+---
+title: "@include 지시자와 규칙 파일"
+description: "@include 구문으로 메모리 파일을 모듈화하고 경로 스코핑으로 선택적 주입을 구현합니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "@include 구문의 다양한 경로 형식과 제약을 설명할 수 있다"
+  - "경로 스코핑(path scoping)으로 규칙을 선택적으로 주입하는 방법을 안다"
+  - "/memory 명령어로 메모리를 관리하는 방법을 이해한다"
+estimated_minutes: 20
+references:
+  - title: "Claude Code 메모리 시스템"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/memory"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+CLAUDE.md 파일이 커지면 유지보수가 어려워집니다. **@include 지시자** 를 사용하면 메모리를 여러 파일로 분리하고 모듈화할 수 있습니다. 또한 **경로 스코핑** 으로 특정 디렉토리 작업 시에만 관련 규칙을 주입할 수 있습니다.
+
+## @include 구문
+
+`@include`는 다른 파일의 내용을 CLAUDE.md에 포함시키는 지시자입니다.
+
+### 경로 형식
+
+```markdown
+@filename                    # 현재 디렉토리 기준 상대 경로
+@./relative/path/file.md     # 명시적 상대 경로
+@~/home/path/shared.md       # 홈 디렉토리 기준
+@/absolute/path/rules.md     # 절대 경로
+```
+
+### 실제 사용 예시
+
+```markdown
+# CLAUDE.md (프로젝트 루트)
+
+# 프로젝트 개요
+이 프로젝트는 Next.js 기반 전자상거래 플랫폼입니다.
+
+# 규칙 포함
+@.claude/rules/coding-style.md
+@.claude/rules/testing.md
+@.claude/rules/git-workflow.md
+@~/my-global-rules/preferences.md
+```
+
+```markdown
+# .claude/rules/coding-style.md
+
+## 코딩 스타일
+- TypeScript 엄격 모드 사용
+- 함수형 컴포넌트만 사용 (클래스 컴포넌트 금지)
+- 불변성 원칙: 객체 직접 수정 금지
+```
+
+## @include 제약 사항
+
+### 코드 블록 내 무시
+
+````markdown
+코드 블록 안의 @include는 처리되지 않습니다:
+
+```
+@this-will-not-be-included.md
+```
+````
+
+코드 예시에서 @include 구문을 보여줄 때 코드 블록을 활용하세요.
+
+### 순환 참조 감지
+
+```
+A.md → @B.md → @A.md  ← 순환 참조 감지, 오류 발생
+```
+
+Claude Code는 순환 참조를 감지하여 무한 루프를 방지합니다.
+
+### 최대 포함 깊이: 5단계
+
+```
+CLAUDE.md
+  └─ @level1.md          (깊이 1)
+      └─ @level2.md      (깊이 2)
+          └─ @level3.md  (깊이 3)
+              └─ @level4.md  (깊이 4)
+                  └─ @level5.md  (깊이 5, 최대)
+                      └─ @level6.md  ← 무시됨
+```
+
+### 지원 파일 형식
+
+텍스트 기반 파일이면 모두 포함 가능합니다.
+
+```
+지원: .md, .ts, .py, .json, .yaml, .txt, .js
+불가: .png, .jpg, .pdf, .zip (바이너리)
+```
+
+TypeScript 타입 정의나 JSON 설정 파일을 직접 포함할 수 있습니다.
+
+```markdown
+@src/types/api.ts        # 타입 정의 포함
+@package.json            # 프로젝트 메타데이터 참조
+```
+
+### 외부 포함 승인 필요
+
+프로젝트 외부 경로(`~/`, `/` 절대경로)의 파일을 처음 포함할 때는 사용자 승인이 필요합니다.
+
+```
+@~/shared-rules/company-policy.md 를 포함하려 합니다.
+외부 파일 포함을 승인하시겠습니까? [y/N]
+```
+
+## .claude/rules/*.md 파일
+
+`.claude/rules/` 디렉토리에 규칙 파일을 분리하면 주제별로 관리할 수 있습니다.
+
+```
+.claude/
+  rules/
+    coding-style.md     # 코딩 규칙
+    testing.md          # 테스트 규칙
+    git-workflow.md     # Git 워크플로우
+    api-design.md       # API 설계 원칙
+    security.md         # 보안 가이드라인
+```
+
+이 파일들은 CLAUDE.md에서 @include로 참조하거나, 경로 스코핑과 함께 자동 주입되도록 설정할 수 있습니다.
+
+## 경로 스코핑 (Path Scoping)
+
+가장 강력한 기능 중 하나입니다. 규칙 파일에 `paths` frontmatter를 추가하면 **특정 경로의 파일을 작업할 때만 해당 규칙이 주입** 됩니다.
+
+```markdown
+---
+paths:
+  - "src/api/**"
+  - "src/services/**"
+---
+
+## API 설계 원칙
+
+- 모든 엔드포인트는 RESTful 원칙 준수
+- 응답 형식: { success, data, error, meta }
+- 인증이 필요한 엔드포인트는 JWT 미들웨어 적용
+- 에러 코드는 HTTP 표준 상태 코드 사용
+```
+
+```markdown
+---
+paths:
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "tests/**"
+---
+
+## 테스트 작성 규칙
+
+- describe 블록으로 논리적 그룹화
+- 각 테스트는 독립적으로 실행 가능
+- 목(mock)은 최소한으로 사용
+- 테스트 명명: "should [동작] when [조건]"
+```
+
+### 경로 스코핑의 동작 방식
+
+```
+사용자: "src/api/auth.ts를 수정해줘"
+    │
+    ├─ paths 매칭 확인
+    │   ├─ src/api/** → api-design.md 매칭 ✓
+    │   ├─ **/*.test.ts → 매칭 안됨 ✗
+    │   └─ src/services/** → 매칭 안됨 ✗
+    │
+    └─ api-design.md 규칙만 컨텍스트에 주입
+```
+
+불필요한 규칙을 컨텍스트에 포함하지 않아 컨텍스트 윈도우를 절약하고 관련성을 높입니다.
+
+<Aside type="tip">
+경로 스코핑은 대규모 프로젝트에서 특히 효과적입니다. 백엔드 규칙이 프론트엔드 작업에 끼어들거나, 테스트 규칙이 일반 코드 작업을 방해하지 않습니다.
+</Aside>
+
+## /memory 명령어
+
+세션 중 메모리를 관리하는 명령어입니다.
+
+```
+/memory
+```
+
+실행하면 다음 기능을 제공합니다:
+- **메모리 에디터 열기**: 현재 로드된 메모리 파일을 편집기에서 직접 수정
+- **컨텍스트 다시 로드**: 수정된 CLAUDE.md 파일을 즉시 반영 (캐시 클리어)
+- **활성 파일 목록 확인**: 현재 세션에 로드된 메모리 파일 목록 표시
+
+```
+/memory 실행 결과 예시:
+────────────────────────────────
+활성 메모리 파일:
+  ✓ /etc/claude-code/CLAUDE.md
+  ✓ ~/.claude/CLAUDE.md
+  ✓ ~/.claude/rules/coding-style.md
+  ✓ .claude/CLAUDE.md
+  ✓ .claude/rules/api-design.md (경로 스코핑: src/api/**)
+────────────────────────────────
+```
+
+CLAUDE.md를 수정한 후 세션을 재시작하지 않고 바로 반영하려면 `/memory` 명령어를 사용하세요.
+
+## 권장 파일 구조
+
+실용적인 메모리 파일 구조 예시입니다.
+
+```
+프로젝트/
+├── CLAUDE.md                    # 프로젝트 개요 + @include 목록
+├── CLAUDE.local.md              # 개인 설정 (gitignore)
+└── .claude/
+    ├── CLAUDE.md                # 상세 프로젝트 규칙
+    └── rules/
+        ├── coding-style.md      # 코딩 스타일
+        ├── testing.md           # 테스트 (paths: **/*.test.ts)
+        ├── api.md               # API 규칙 (paths: src/api/**)
+        ├── database.md          # DB 규칙 (paths: src/db/**)
+        └── security.md          # 보안 (paths: src/auth/**)
+```
+
+이 구조는 파일을 작고 집중적으로 유지하면서, 필요한 규칙만 적시에 주입하는 최적의 메모리 관리 방식입니다.

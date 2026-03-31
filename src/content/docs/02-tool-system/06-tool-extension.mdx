@@ -1,0 +1,209 @@
+---
+title: "도구 확장과 커스텀 도구"
+description: "Claude Code의 도구 인터페이스를 구현하여 커스텀 도구를 만드는 방법과 특수 내장 도구를 이해합니다."
+sidebar:
+  order: 6
+learning_objectives:
+  - "도구 인터페이스의 필수 및 선택 메서드를 모두 설명할 수 있다"
+  - "MCP 도구 네이밍 패턴을 이해하고 올바르게 참조할 수 있다"
+  - "TodoWrite와 NotebookEdit의 사용 시점을 구분할 수 있다"
+estimated_minutes: 30
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 도구 확장 개요
+
+Claude Code의 도구 시스템은 확장 가능하도록 설계되어 있습니다. 공통 인터페이스를 구현하면 내장 도구와 동일한 방식으로 동작하는 커스텀 도구를 만들 수 있습니다.
+
+## 도구 인터페이스 전체 구조
+
+```typescript
+interface Tool<TInput = unknown, TOutput = unknown> {
+  // ── 필수: 식별 정보 ──────────────────────────────
+  name: string
+  // 모델이 읽는 설명 — 언제 이 도구를 사용할지 명확히 서술
+  description: string
+  // JSON Schema로 정의된 입력 파라미터
+  parameters: {
+    type: 'object'
+    properties: Record<string, JSONSchemaProperty>
+    required: string[]
+  }
+
+  // ── 필수: 핵심 실행 ──────────────────────────────
+  execute(input: TInput, context: ToolContext): Promise<TOutput>
+
+  // ── 선택: 권한 평가 ──────────────────────────────
+  // 미구현 시 기본값: 'ask'
+  checkPermissions?(input: TInput): Promise<'allow' | 'ask' | 'deny'>
+
+  // ── 선택: 활성화 조건 ────────────────────────────
+  // 미구현 시 기본값: true
+  isEnabled?(): boolean
+
+  // ── 선택: 결과 크기 제한 ─────────────────────────
+  // 초과 시 임시 파일에 저장하고 경로 반환
+  maxResultSizeChars?: number
+}
+```
+
+### 커스텀 도구 구현 예시
+
+```typescript
+// 데이터베이스 쿼리 도구 예시
+class DatabaseQueryTool implements Tool {
+  name = 'DatabaseQuery'
+  description = `로컬 SQLite 데이터베이스에 SQL 쿼리를 실행합니다.
+    SELECT 쿼리만 허용됩니다. 데이터 변경(INSERT/UPDATE/DELETE)은 불가합니다.`
+
+  parameters = {
+    type: 'object' as const,
+    properties: {
+      query: {
+        type: 'string',
+        description: 'SELECT SQL 쿼리'
+      },
+      database: {
+        type: 'string',
+        description: '데이터베이스 파일 경로'
+      }
+    },
+    required: ['query', 'database']
+  }
+
+  maxResultSizeChars = 50_000
+
+  async checkPermissions(input: { query: string }) {
+    // SELECT만 허용
+    const isSelect = input.query.trim().toUpperCase().startsWith('SELECT')
+    return isSelect ? 'allow' : 'deny'
+  }
+
+  isEnabled(): boolean {
+    // sqlite3 바이너리가 있을 때만 활성화
+    return existsSync('/usr/bin/sqlite3')
+  }
+
+  async execute(input: { query: string; database: string }) {
+    const result = await runSQLite(input.database, input.query)
+    return { rows: result, count: result.length }
+  }
+}
+```
+
+## 특수 내장 도구
+
+### NotebookEdit
+
+Jupyter 노트북(`.ipynb`)을 **셀 수준** 으로 편집합니다. 일반 Edit 도구는 JSON 구조를 직접 수정해야 하지만, NotebookEdit은 노트북 구조를 이해하고 셀 단위로 작업합니다.
+
+```typescript
+// 새 셀 삽입
+{
+  notebook_path: "/analysis/data.ipynb",
+  new_source: "import pandas as pd\ndf = pd.read_csv('data.csv')",
+  cell_type: "code",
+  insert_after: 2  // 3번째 셀 다음에 삽입
+}
+
+// 기존 셀 교체
+{
+  notebook_path: "/analysis/data.ipynb",
+  new_source: "# 수정된 분석 코드\ndf.describe()",
+  cell_index: 5  // 6번째 셀을 교체
+}
+
+// 셀 삭제
+{
+  notebook_path: "/analysis/data.ipynb",
+  cell_index: 3,
+  delete: true
+}
+```
+
+| 작업 | 파라미터 | 설명 |
+|------|----------|------|
+| 삽입 | `insert_after` + `new_source` | 지정 셀 다음에 삽입 |
+| 교체 | `cell_index` + `new_source` | 지정 셀 내용 교체 |
+| 삭제 | `cell_index` + `delete: true` | 지정 셀 제거 |
+
+### TodoWrite
+
+세션 내 **영속적 태스크 목록** 을 관리합니다. 복잡한 다단계 작업을 진행할 때 진행 상황을 추적하고, 사용자와 진행 상태를 공유하는 데 사용됩니다.
+
+```typescript
+// 태스크 목록 생성 및 업데이트
+{
+  todos: [
+    {
+      id: "1",
+      content: "src/auth.ts의 버그 재현",
+      status: "completed",
+      priority: "high"
+    },
+    {
+      id: "2",
+      content: "수정 사항 구현",
+      status: "in_progress",
+      priority: "high"
+    },
+    {
+      id: "3",
+      content: "테스트 작성",
+      status: "pending",
+      priority: "medium"
+    }
+  ]
+}
+```
+
+**status 값:**
+
+| 값 | 의미 | 표시 |
+|----|------|------|
+| `pending` | 아직 시작 안 함 | ○ |
+| `in_progress` | 현재 진행 중 | ◐ |
+| `completed` | 완료 | ● |
+
+TodoWrite는 대화형 UI에서 실시간으로 업데이트되어 사용자가 진행 상황을 즉시 파악할 수 있습니다.
+
+## MCP 도구 네이밍 패턴
+
+MCP 서버에서 제공하는 도구는 고유한 네임스페이스 패턴을 따릅니다.
+
+```
+mcp__<서버명>__<도구명>
+```
+
+```json
+// settings.json MCP 서버 설정
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"]
+    }
+  }
+}
+```
+
+위 설정으로 등록되는 도구 이름:
+
+| MCP 서버 | 원래 도구명 | Claude Code 내 이름 |
+|----------|-----------|-------------------|
+| filesystem | `read_file` | `mcp__filesystem__read_file` |
+| filesystem | `write_file` | `mcp__filesystem__write_file` |
+| github | `create_issue` | `mcp__github__create_issue` |
+| github | `list_prs` | `mcp__github__list_prs` |
+
+서버명에 하이픈이 있으면 언더스코어로 변환됩니다. (`my-server` → `mcp__my_server__tool`)
+
+import Quiz from '../../../components/learning/Quiz';
+
+<Quiz client:load section="02-tool-system" />

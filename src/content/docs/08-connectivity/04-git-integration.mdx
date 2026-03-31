@@ -1,0 +1,120 @@
+---
+title: "Git 통합"
+description: "Claude Code의 부팅 시 Git 상태 수집, Git 안전 프로토콜, 워크트리 격리 메커니즘을 학습합니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "부팅 시 수집되는 Git 컨텍스트 정보(브랜치, 커밋, 상태)를 설명할 수 있다"
+  - "Git 안전 프로토콜의 핵심 규칙과 이유를 이해한다"
+  - "Git 워크트리 기반 에이전트 격리의 동작 방식을 안다"
+estimated_minutes: 20
+references:
+  - title: "Git"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/git"
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 부팅 시 Git 상태 수집
+
+Claude Code는 시작 시 **자동으로 Git 컨텍스트를 수집**하여 시스템 프롬프트에 포함합니다. 이를 통해 Claude는 현재 작업 브랜치, 변경 사항, 최근 히스토리를 즉시 파악합니다.
+
+| 수집 항목 | 내용 | 제한 |
+|-----------|------|------|
+| 브랜치명 | 현재 체크아웃된 브랜치 | - |
+| 기본 브랜치 | main 또는 master | - |
+| Git 사용자명 | `git config user.name` | - |
+| 작업 상태 | `git status` 출력 | **2,000자 제한** |
+| 최근 커밋 | `git log --oneline` | **최근 5개** |
+
+```bash
+# Claude가 수집하는 정보와 동일한 명령어
+git branch --show-current
+git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null
+git config user.name
+git status --short | head -c 2000
+git log --oneline -5
+```
+
+원격 모드(`CLAUDE_CODE_REMOTE=1`)에서는 Git 컨텍스트 수집이 **생략**됩니다.
+
+## Git 안전 프로토콜
+
+Claude Code는 Git 작업 시 다음 안전 규칙을 준수합니다.
+
+| 규칙 | 이유 |
+|------|------|
+| 푸시된 커밋 수정 금지 | 협업자의 히스토리 깨짐 방지 |
+| 훅 건너뛰기 금지 (`--no-verify`) | 팀 코드 품질 기준 유지 |
+| main/master 강제 푸시 경고 | 프로덕션 브랜치 보호 |
+| 서명 건너뛰기 금지 | 커밋 무결성 보장 |
+
+```bash
+# 이런 명령어는 Claude가 자동으로 거부하거나 경고합니다
+git commit --no-verify        # 훅 건너뛰기
+git push --force origin main  # 메인 브랜치 강제 푸시
+git rebase -f HEAD~3          # 푸시된 커밋 재작성
+```
+
+## 읽기 전용 Git 명령어 자동 승인
+
+보안상 안전한 읽기 전용 Git 명령어는 **권한 요청 없이 자동 승인**됩니다.
+
+```
+자동 승인: git log, git status, git diff, git show,
+           git branch, git remote -v, git stash list
+권한 필요: git push, git merge, git rebase,
+           git reset, git checkout (브랜치 변경)
+```
+
+## CwdChanged 훅 활용
+
+작업 디렉토리가 변경될 때 환경을 자동으로 재설정할 수 있습니다.
+
+```json
+{
+  "hooks": {
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '디렉토리 변경: $CLAUDE_TOOL_INPUT' && git status --short 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## 워크트리 기반 에이전트 격리
+
+병렬 에이전트 작업 시 **Git 워크트리**를 사용하여 각 에이전트가 독립적인 작업 공간에서 실행됩니다.
+
+```bash
+# 워크트리 생성 (Claude가 자동으로 수행)
+git worktree add /tmp/claude-agent-abc123 feature/auth
+
+# 각 에이전트는 자신의 워크트리에서 작업
+# 워크트리 A: feature/auth 브랜치
+# 워크트리 B: feature/payment 브랜치
+# 워크트리 C: bugfix/login 브랜치
+```
+
+`WorktreeCreate`와 `WorktreeRemove` 훅으로 워크트리 생명주기를 모니터링할 수 있습니다.
+
+```json
+{
+  "hooks": {
+    "WorktreeCreate": [{
+      "hooks": [{ "type": "command", "command": "echo '워크트리 생성: $ARGUMENTS'" }]
+    }],
+    "WorktreeRemove": [{
+      "hooks": [{ "type": "command", "command": "echo '워크트리 제거: $ARGUMENTS'" }]
+    }]
+  }
+}
+```
+
+워크트리 격리를 통해 여러 에이전트가 동시에 서로 다른 기능을 개발하더라도 파일 충돌 없이 안전하게 작업할 수 있습니다.

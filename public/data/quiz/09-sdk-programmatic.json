@@ -1,0 +1,126 @@
+{
+  "id": "09-sdk-programmatic",
+  "title": "SDK 및 프로그래밍 방식 사용",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "Claude Code SDK가 사용하는 주요 통신 방식은?",
+      "options": [
+        "HTTP REST API",
+        "JSON 스트림 (stdin/stdout)",
+        "WebSocket",
+        "gRPC"
+      ],
+      "answer": 1,
+      "explanation": "Claude Code SDK는 stdin으로 JSON 명령을 전송하고 stdout으로 JSON 스트림 이벤트를 받는 방식으로 통신합니다."
+    },
+    {
+      "id": "q2",
+      "question": "SDKControlRequest와 SDKControlResponse의 역할은?",
+      "options": [
+        "파일 입출력을 담당하는 인터페이스",
+        "SDK가 Claude Code 프로세스를 제어하고 결과를 받기 위한 JSON 메시지 구조",
+        "에러 처리를 위한 예외 클래스",
+        "인증 토큰 교환 프로토콜"
+      ],
+      "answer": 1,
+      "explanation": "SDKControlRequest는 SDK에서 Claude Code로 보내는 제어 명령의 JSON 구조이고, SDKControlResponse는 Claude Code가 반환하는 결과의 JSON 구조입니다."
+    },
+    {
+      "id": "q3",
+      "question": "SDK 초기화 흐름에서 가장 먼저 수행되는 단계는?",
+      "options": [
+        "쿼리 전송",
+        "Claude Code 프로세스 시작 및 초기화 핸드셰이크",
+        "파일 권한 설정",
+        "세션 복원"
+      ],
+      "answer": 1,
+      "explanation": "SDK 초기화는 Claude Code 프로세스를 시작하고, 버전 확인 및 설정 교환을 위한 초기화 핸드셰이크를 수행하는 것부터 시작합니다."
+    },
+    {
+      "id": "q4",
+      "question": "SDK의 query() API 함수의 역할은?",
+      "options": [
+        "데이터베이스를 쿼리한다",
+        "Claude Code에 메시지를 전송하고 응답 스트림을 반환한다",
+        "파일을 검색한다",
+        "환경 변수를 쿼리한다"
+      ],
+      "answer": 1,
+      "explanation": "query()는 Claude Code에 사용자 메시지나 작업 지시를 전송하고, 응답 이벤트를 스트리밍으로 받아 처리할 수 있는 핵심 API 함수입니다."
+    },
+    {
+      "id": "q5",
+      "question": "SDK에서 세션 ID를 관리하는 이유는?",
+      "options": [
+        "요금 청구를 위한 추적",
+        "대화 컨텍스트를 유지하고 동일 세션에서 연속적인 대화를 이어가기 위해",
+        "병렬 요청을 분산하기 위해",
+        "API 키를 교체하기 위해"
+      ],
+      "answer": 1,
+      "explanation": "세션 ID는 대화 컨텍스트를 식별하는 고유 키입니다. 동일한 세션 ID를 사용하면 이전 대화 맥락이 유지되어 연속적인 작업이 가능합니다."
+    },
+    {
+      "id": "q6",
+      "question": "SDK를 통해 커스텀 에이전트를 정의할 때 필요한 핵심 요소는?",
+      "options": [
+        "에이전트 이름만 필요하다",
+        "시스템 프롬프트, 허용 도구 목록, 권한 설정",
+        "UI 컴포넌트 정의",
+        "데이터베이스 스키마"
+      ],
+      "answer": 1,
+      "explanation": "커스텀 에이전트는 에이전트의 역할을 정의하는 시스템 프롬프트, 사용 가능한 도구 목록, 그리고 권한 설정을 통해 정의됩니다."
+    },
+    {
+      "id": "q7",
+      "question": "SDK 훅(Hook)을 사용하면 어떤 것이 가능해지나요?",
+      "options": [
+        "Claude 모델을 교체할 수 있다",
+        "SDK 이벤트(메시지 수신, 도구 실행 등)에 커스텀 로직을 연결할 수 있다",
+        "API 비용을 모니터링한다",
+        "로컬 파일 시스템에 직접 접근한다"
+      ],
+      "answer": 1,
+      "explanation": "SDK 훅은 메시지 수신, 도구 실행 시작/완료, 세션 종료 등의 이벤트에 커스텀 콜백 로직을 연결하여 세밀한 제어를 가능하게 합니다."
+    },
+    {
+      "id": "q8",
+      "question": "IDE 통합에서 Claude Code SDK를 활용하는 방식은?",
+      "options": [
+        "IDE 플러그인이 직접 AI 모델 API를 호출한다",
+        "IDE 익스텐션이 SDK를 통해 Claude Code 프로세스와 통신하여 코드 지원을 제공한다",
+        "Claude Code가 IDE를 직접 조작한다",
+        "IDE와 Claude Code는 독립적으로 동작한다"
+      ],
+      "answer": 1,
+      "explanation": "IDE 익스텐션(VS Code 등)은 Claude Code SDK를 통해 로컬에서 실행 중인 Claude Code 프로세스와 통신하여 코드 완성, 리팩터링, 설명 등의 기능을 제공합니다."
+    },
+    {
+      "id": "q9",
+      "question": "CI/CD 자동화에서 Claude Code를 활용하는 일반적인 방법은?",
+      "options": [
+        "CI 서버에서 대화형 모드로 실행한다",
+        "--print 플래그나 SDK를 사용하여 비대화형으로 코드 리뷰, 테스트, 문서화 작업을 자동화한다",
+        "Claude Code GUI를 원격으로 제어한다",
+        "CI/CD에서는 사용할 수 없다"
+      ],
+      "answer": 1,
+      "explanation": "--print 플래그나 SDK를 사용하면 사람의 개입 없이 파이프라인에서 코드 리뷰, 보안 스캔, 자동 문서화 등을 자동으로 수행할 수 있습니다."
+    },
+    {
+      "id": "q10",
+      "question": "SDK에서 stream-json 출력을 처리할 때 어떤 이벤트 타입이 포함되나요?",
+      "options": [
+        "start, data, end만 포함된다",
+        "message_start, content_block_delta, tool_use, message_stop 등 다양한 이벤트 타입이 포함된다",
+        "오직 최종 응답 이벤트만 포함된다",
+        "XML 이벤트 형식으로 전달된다"
+      ],
+      "answer": 1,
+      "explanation": "stream-json 출력에는 message_start(메시지 시작), content_block_delta(텍스트 청크), tool_use(도구 호출), tool_result(도구 결과), message_stop(메시지 완료) 등 다양한 이벤트가 포함됩니다."
+    }
+  ]
+}

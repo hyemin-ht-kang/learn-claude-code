@@ -1,0 +1,132 @@
+---
+title: "설정 시스템"
+description: "Claude Code의 계층적 설정 파일 시스템과 환경 변수, 설정 병합 규칙을 이해합니다."
+sidebar:
+  order: 1
+learning_objectives:
+  - "설정 파일의 세 가지 계층(사용자/프로젝트/로컬)과 각각의 역할을 설명할 수 있다"
+  - "환경 변수를 통해 Claude Code 동작을 제어하는 방법을 안다"
+  - "설정 병합 규칙과 ConfigChange 훅의 동작을 이해한다"
+estimated_minutes: 25
+references:
+  - title: "Claude Code 설정"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/settings"
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 설정 파일 계층
+
+Claude Code는 **세 가지 계층**의 설정 파일을 사용합니다. 각 계층은 서로 다른 범위를 가지며, 더 구체적인 범위가 더 넓은 범위를 재정의합니다.
+
+| 계층 | 경로 | 범위 | 용도 |
+|------|------|------|------|
+| 사용자 | `~/.claude/settings.json` | 전역 | 모든 프로젝트에 적용되는 개인 설정 |
+| 프로젝트 | `.claude/settings.json` | 프로젝트 | 팀 공유 프로젝트 설정, 버전 관리 포함 |
+| 로컬 | `.claude/settings.local.json` | 로컬 개인 | 개인 프로젝트 오버라이드, `.gitignore`에 추가 권장 |
+
+```json
+// ~/.claude/settings.json (사용자 전역)
+{
+  "model": "claude-sonnet-4-5",
+  "permissions": {
+    "allow": ["Bash(git:*)"],
+    "deny": []
+  }
+}
+```
+
+```json
+// .claude/settings.json (프로젝트 공유)
+{
+  "permissions": {
+    "allow": ["Bash(npm:*)"],
+    "deny": ["Bash(rm:-rf*)"]
+  }
+}
+```
+
+```json
+// .claude/settings.local.json (개인 로컬 오버라이드)
+{
+  "model": "claude-opus-4-5"
+}
+```
+
+## 환경 변수
+
+설정 파일 외에도 **환경 변수**를 통해 동작을 제어할 수 있습니다.
+
+| 변수 | 설명 |
+|------|------|
+| `ANTHROPIC_API_KEY` | Anthropic API 인증 키 |
+| `CLAUDE_CODE_REMOTE` | `1`로 설정 시 원격 실행 모드 활성화, Git 컨텍스트 생략 |
+| `CLAUDE_CODE_SIMPLE` | `1`로 설정 시 단순화 모드, 복잡한 UI 비활성화 |
+| `CLAUDE_CODE_DISABLE_CLAUDE_MDS` | `1`로 설정 시 CLAUDE.md 파일 로딩 비활성화 |
+| `CLAUDE_ENV_FILE` | 커스텀 `.env` 파일 경로 지정 |
+
+```bash
+# 환경 변수 설정 예시
+export ANTHROPIC_API_KEY="sk-ant-..."
+export CLAUDE_CODE_REMOTE=1
+export CLAUDE_ENV_FILE="/path/to/my/.env"
+```
+
+## 설정 병합 규칙
+
+설정은 **더 구체적인 범위가 더 넓은 범위를 재정의**하는 방식으로 병합됩니다.
+
+```
+관리 설정 (/etc/claude-code/) → 사용자 설정 → 프로젝트 설정 → 로컬 설정
+  (가장 낮은 우선순위)                              (가장 높은 우선순위)
+```
+
+배열 필드(예: `permissions.allow`)는 **합집합**으로 병합됩니다. 즉, 여러 계층에서 정의된 허용 규칙은 모두 합쳐집니다. 반면 단일 값 필드(예: `model`)는 가장 구체적인 값이 이전 값을 완전히 덮어씁니다.
+
+## ConfigChange 훅
+
+설정 파일이 변경될 때 자동으로 실행되는 훅을 등록할 수 있습니다.
+
+```json
+{
+  "hooks": {
+    "ConfigChange": [
+      {
+        "matcher": "user_settings",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '사용자 설정이 변경되었습니다'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**ConfigChange 이벤트 matcher 유형:**
+
+| matcher | 설명 |
+|---------|------|
+| `user_settings` | `~/.claude/settings.json` 변경 시 |
+| `project_settings` | `.claude/settings.json` 변경 시 |
+| `local_settings` | `.claude/settings.local.json` 변경 시 |
+| `policy_settings` | 관리 정책 설정 변경 시 |
+| `skills` | 스킬 파일 변경 시 |
+
+## 관리 설정 (Managed Settings)
+
+조직 관리자는 `/etc/claude-code/` 경로에 **정책 설정**을 배포할 수 있습니다. 이 설정은 모든 사용자 설정보다 낮은 우선순위를 가지지만, 특정 기능을 강제로 비활성화하거나 기본값을 설정하는 데 사용됩니다.
+
+```json
+// /etc/claude-code/policy.json (조직 정책)
+{
+  "permissions": {
+    "deny": ["Bash(curl:*)"]
+  },
+  "disableAutoUpdate": true
+}
+```
+
+이 계층 구조를 통해 조직은 보안 정책을 일관되게 적용하면서도 팀과 개인이 세부 동작을 커스터마이즈할 수 있습니다.

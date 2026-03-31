@@ -1,0 +1,222 @@
+---
+title: "Bash 도구"
+description: "Claude Code의 Bash 도구 동작 방식, 권한 시스템, 보안 제한을 이해합니다."
+sidebar:
+  order: 3
+learning_objectives:
+  - "Bash 도구의 영속적 작업 디렉토리와 셸 상태 재초기화의 차이를 설명할 수 있다"
+  - "3단계 권한 평가 방식을 이해하고 적절한 규칙을 작성할 수 있다"
+  - "복합 명령어 파싱 방식과 보안 제한의 범위를 파악할 수 있다"
+estimated_minutes: 35
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## Bash 도구 개요
+
+Bash 도구는 Claude Code에서 가장 강력하면서도 주의가 필요한 도구입니다. 사용자의 로컬 터미널에서 임의의 셸 명령을 실행할 수 있어, 잘못 사용하면 시스템에 돌이킬 수 없는 변경을 가할 수 있습니다.
+
+이 강력함을 안전하게 활용하기 위해 Claude Code는 정교한 권한 시스템과 보안 제한을 적용합니다.
+
+## 기본 동작
+
+### 영속적 작업 디렉토리
+
+Bash 도구는 **영속적 작업 디렉토리(persistent working directory)** 를 유지합니다. 한 호출에서 `cd` 로 이동한 디렉토리는 다음 호출에도 유지됩니다.
+
+```bash
+# 첫 번째 호출
+cd /Users/reserve/Workspace/my-project
+
+# 두 번째 호출 (디렉토리가 유지됨)
+pwd  # → /Users/reserve/Workspace/my-project
+```
+
+### 셸 상태 재초기화
+
+단, **셸 상태(환경 변수, 함수 정의 등)** 는 매 호출 시 사용자 프로필(`~/.zshrc`, `~/.bashrc`)에서 재초기화됩니다.
+
+```bash
+# 첫 번째 호출에서 변수 설정
+export MY_VAR="hello"
+
+# 두 번째 호출에서 변수가 없음
+echo $MY_VAR  # → "" (빈 문자열)
+```
+
+이 특성 때문에 여러 단계에 걸친 작업은 **단일 호출** 에 묶어서 실행하는 것이 좋습니다.
+
+```bash
+# 비효율적: 두 번 호출
+cd /project && npm install
+npm test
+
+# 효율적: 한 번 호출로 묶기
+cd /project && npm install && npm test
+```
+
+### 타임아웃 설정
+
+| 파라미터 | 기본값 | 최대값 | 단위 |
+|----------|--------|--------|------|
+| `timeout` | 120,000 | 600,000 | 밀리초 |
+
+```typescript
+// 긴 작업을 위한 타임아웃 연장
+{
+  command: "npm run build",
+  timeout: 300000  // 5분
+}
+```
+
+### 백그라운드 실행
+
+`run_in_background: true` 로 설정하면 명령이 비동기로 실행됩니다. 완료될 때 알림을 받을 수 있습니다.
+
+```typescript
+{
+  command: "npm run dev",
+  run_in_background: true
+}
+```
+
+## 3단계 권한 시스템
+
+Bash 도구의 권한은 명령어 단위로 평가됩니다.
+
+| 단계 | 명칭 | 조건 | 동작 |
+|------|------|------|------|
+| 1 | Allow | 읽기 전용 명령 또는 명시적 allow 규칙 | 즉시 실행 |
+| 2 | Ask | 규칙에 해당하지 않는 일반 명령 | 사용자 승인 요청 |
+| 3 | Deny | 명시적 deny 규칙 또는 영구 차단 목록 | 실행 거부 |
+
+### 기본 Allow 명령어 (읽기 전용)
+
+다음 명령들은 시스템 변경 없이 읽기만 하므로 기본적으로 자동 승인됩니다.
+
+```bash
+# 자동 승인되는 명령 예시
+ls, pwd, cat, head, tail, grep, find, echo
+git status, git log, git diff
+ps, top, df, du
+node --version, npm list
+```
+
+### 권한 규칙 설정
+
+```json
+// .claude/settings.json
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit:*)",    // git commit 모든 옵션 허용
+      "Bash(npm run *)",       // npm run 스크립트 전체 허용
+      "Bash(docker ps:*)"      // docker ps 허용
+    ],
+    "deny": [
+      "Bash(rm -rf *)",        // rm -rf 전체 차단
+      "Bash(npm publish:*)",   // 패키지 배포 차단
+      "Bash(git push --force)" // 강제 푸시 차단
+    ]
+  }
+}
+```
+
+## 복합 명령어 파싱
+
+`&&`, `||`, `;`, `|` 로 연결된 복합 명령어는 각 서브커맨드가 **독립적으로 권한 평가** 됩니다.
+
+```bash
+# 이 명령어의 권한 평가:
+git add . && git commit -m "fix" && git push
+
+# → "git add ."      : ask (변경 작업)
+# → "git commit -m"  : allow (규칙에 명시)
+# → "git push"       : ask (원격 변경)
+# 가장 제한적인 권한이 전체에 적용: ask
+```
+
+파이프(`|`)도 마찬가지입니다.
+
+```bash
+# 파이프 명령어 권한 평가
+cat secrets.txt | grep "password"
+
+# → "cat secrets.txt" : allow (읽기 전용)
+# → "grep 'password'" : allow (읽기 전용)
+# 모두 allow → 전체 자동 승인
+```
+
+## 보안 제한
+
+### 승인 필요 항목
+
+다음 패턴은 명시적 allow 규칙이 없으면 항상 `ask` 로 처리됩니다.
+
+```bash
+# 명령어 치환 (잠재적 코드 실행)
+$(dangerous_command)
+`dangerous_command`
+
+# 프로세스 치환
+<(command) >(command)
+
+# 민감한 환경 변수 접근
+/proc/*/environ
+cat /etc/passwd
+
+# IFS 조작 (명령어 파싱 변경)
+IFS=':'
+```
+
+### 영구 차단 목록
+
+다음은 어떤 규칙으로도 허용할 수 없는 영구 차단 항목입니다.
+
+| 항목 | 이유 |
+|------|------|
+| Claude Code 설정 디렉토리 수정 | 권한 우회 방지 |
+| `~/.claude/settings.json` 변경 | 자기 수정 방지 |
+| `~/.bashrc`, `~/.zshrc` 수정 | 셸 설정 보호 |
+| `PATH` 경로 우회 시도 | 바이너리 하이재킹 방지 |
+| `sudo` 로 Claude Code 프로세스 수정 | 권한 상승 방지 |
+
+```bash
+# 영구 차단 예시
+echo "alias claude=malicious_script" >> ~/.bashrc
+# → 영구 차단: 셸 설정 파일 수정
+
+chmod 777 ~/.claude/settings.json
+# → 영구 차단: 설정 디렉토리 접근
+```
+
+## 실용적인 사용 팁
+
+### 긴 출력 다루기
+
+```bash
+# 출력이 길 경우 파일로 저장
+npm test 2>&1 | tee /tmp/test-results.txt
+
+# Claude Code가 /tmp/test-results.txt를 Read로 확인 가능
+```
+
+### 에러 처리
+
+```bash
+# 실패해도 계속 진행 (set -e 우회)
+npm test || true
+
+# 에러 메시지도 캡처
+command 2>&1
+```
+
+### 환경 변수가 필요한 경우
+
+셸 상태가 재초기화되므로, 매 호출에 환경 변수를 명시합니다.
+
+```bash
+# 환경 변수를 인라인으로 지정
+NODE_ENV=test DATABASE_URL=sqlite://test.db npm test
+```

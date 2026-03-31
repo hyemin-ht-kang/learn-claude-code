@@ -1,0 +1,180 @@
+---
+title: "멀티에이전트 실행"
+description: "포그라운드와 백그라운드 에이전트의 차이, 병렬 실행 패턴, 결과 크기 제한을 이해합니다."
+sidebar:
+  order: 2
+learning_objectives:
+  - "포그라운드와 백그라운드 에이전트의 차이점을 설명할 수 있다"
+  - "병렬 실행이 유리한 패턴을 식별하고 설계할 수 있다"
+  - "서브에이전트의 플랫 구조 제약과 결과 크기 제한을 이해할 수 있다"
+estimated_minutes: 25
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 실행 모드: 포그라운드 vs 백그라운드
+
+서브에이전트는 두 가지 실행 모드를 지원합니다.
+
+### 포그라운드 에이전트
+
+`run_in_background: false` (기본값). 부모 에이전트는 서브에이전트가 완료될 때까지 **대기** 합니다.
+
+```typescript
+// 포그라운드 실행 — 순차 의존성이 있을 때
+const reviewResult = await Task({
+  description: "코드 리뷰",
+  prompt: "src/auth.ts를 리뷰해주세요...",
+  run_in_background: false  // 결과를 받아야 다음 단계 진행 가능
+})
+
+// reviewResult를 받은 후 다음 작업 진행
+```
+
+**사용 시점**: 이전 에이전트의 결과가 다음 작업에 필요할 때.
+
+### 백그라운드 에이전트
+
+`run_in_background: true`. 부모 에이전트는 즉시 다음 작업으로 진행하고, 서브에이전트는 비동기로 실행됩니다.
+
+```typescript
+// 백그라운드 실행 — 독립 작업들을 동시에 시작
+Task({
+  description: "린터 실행",
+  prompt: "ESLint를 실행하고 오류를 보고해주세요",
+  run_in_background: true
+})
+
+Task({
+  description: "테스트 실행",
+  prompt: "Jest 테스트를 실행하고 실패를 보고해주세요",
+  run_in_background: true
+})
+
+// 두 작업이 동시에 실행됨
+// 완료 시 태스크 패널에서 알림
+```
+
+**사용 시점**: 서로 독립적인 작업을 동시에 실행할 때.
+
+### 백그라운드 에이전트 취소
+
+대화형 UI의 태스크 패널에서 실행 중인 백그라운드 에이전트를 취소할 수 있습니다.
+
+```
+[태스크 패널]
+● 린터 실행       [실행 중] [취소]
+● 테스트 실행     [완료]
+```
+
+## 병렬 실행 패턴
+
+병렬 실행이 가장 큰 효과를 발휘하는 패턴들입니다.
+
+### 패턴 1: 동시 품질 검사
+
+```typescript
+// 린터와 테스트를 동시에 실행
+Task({ description: "ESLint 검사", prompt: "...", run_in_background: true })
+Task({ description: "Jest 테스트", prompt: "...", run_in_background: true })
+Task({ description: "TypeScript 타입 검사", prompt: "...", run_in_background: true })
+
+// 순차 실행 대비 시간: 3배 단축
+// (각 작업이 60초라면 60초에 완료, vs 순차 180초)
+```
+
+### 패턴 2: 병렬 리서치
+
+```typescript
+// 세 라이브러리를 동시에 조사
+const [zustandResult, jotaiResult, recoilResult] = await Promise.all([
+  Task({ description: "Zustand 분석", prompt: "Zustand 라이브러리를 분석해주세요..." }),
+  Task({ description: "Jotai 분석", prompt: "Jotai 라이브러리를 분석해주세요..." }),
+  Task({ description: "Recoil 분석", prompt: "Recoil 라이브러리를 분석해주세요..." })
+])
+```
+
+### 패턴 3: 구현과 검토 분리
+
+```typescript
+// 구현 완료 후 독립적인 검토 에이전트 실행
+const implementation = await Task({
+  description: "기능 구현",
+  prompt: "UserService에 getProfile 메서드를 구현해주세요..."
+})
+
+// 구현 결과를 받아 별도 에이전트에서 검토
+Task({
+  description: "보안 검토",
+  prompt: `다음 구현을 보안 관점에서 검토해주세요:\n${implementation}`,
+  run_in_background: true
+})
+
+Task({
+  description: "성능 검토",
+  prompt: `다음 구현의 성능을 검토해주세요:\n${implementation}`,
+  run_in_background: true
+})
+```
+
+## 결과 크기 제한
+
+서브에이전트가 반환하는 결과는 **100,000자** 로 제한됩니다.
+
+```typescript
+// 결과 크기 초과 시 동작
+{
+  result: "... (truncated at 100,000 chars)",
+  truncated: true,
+  full_result_path: "/tmp/claude_agent_result_abc123.txt"
+}
+```
+
+대용량 결과가 예상되는 경우 에이전트 프롬프트에서 요약을 명시적으로 요청하거나, 결과를 파일로 저장하고 경로를 반환하도록 지시합니다.
+
+```typescript
+// 대용량 결과 처리 프롬프트 예시
+prompt: `전체 코드베이스를 분석하되, 결과는 다음 형식으로 요약하세요:
+  - 발견된 문제: 최대 20개 (심각도 순)
+  - 각 문제: 파일명, 라인번호, 한 줄 설명
+  전체 분석 결과는 /tmp/full-analysis.txt에 저장하세요.`
+```
+
+## 플랫 구조 제약
+
+서브에이전트는 **다른 서브에이전트를 스폰할 수 없습니다**. 에이전트 계층은 최대 2단계(부모 + 서브)로 제한됩니다.
+
+```
+허용:
+부모 에이전트
+  ├── 서브에이전트 A  ✓
+  ├── 서브에이전트 B  ✓
+  └── 서브에이전트 C  ✓
+
+허용 안 됨:
+부모 에이전트
+  └── 서브에이전트 A
+        └── 서브-서브에이전트  ✗ (재귀 스폰 불가)
+```
+
+워크트리 기반 포크 에이전트도 마찬가지로 **재귀적 포크** 가 불가합니다.
+
+이 제약은 무한 재귀와 예측 불가능한 리소스 소비를 방지하기 위한 의도적 설계입니다.
+
+## 직렬 vs 병렬 실행 결정 트리
+
+```
+작업들이 서로 독립적인가?
+    ├── Yes → 병렬 실행 (run_in_background: true)
+    └── No  → A의 결과가 B에 필요한가?
+                  ├── Yes → 직렬 실행 (순차적으로 await)
+                  └── No  → 부분 병렬 고려
+                              (의존 없는 것만 병렬화)
+```
+
+| 패턴 | 실행 방식 | 총 소요 시간 (각 30초 작업 3개) |
+|------|---------|-------------------------------|
+| 순차 실행 | A → B → C | 90초 |
+| 완전 병렬 | A \|\| B \|\| C | 30초 |
+| 부분 병렬 | A → (B \|\| C) | 60초 |

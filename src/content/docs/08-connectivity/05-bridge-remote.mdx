@@ -1,0 +1,138 @@
+---
+title: "브릿지와 원격 실행"
+description: "IDE와 Claude Code 간 브릿지 시스템, 원격 실행 모드, 크론 스케줄링, 보이스 입력 지원을 학습합니다."
+sidebar:
+  order: 5
+learning_objectives:
+  - "브릿지 시스템이 IDE와 Claude Code 간 통신을 처리하는 방식을 설명할 수 있다"
+  - "원격 모드(CLAUDE_CODE_REMOTE=1)의 특성과 적합한 사용 사례를 이해한다"
+  - "RemoteTrigger를 통한 크론 스케줄링 자동화 방법을 안다"
+estimated_minutes: 20
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+  - title: "Ide Integrations"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/ide-integrations"
+---
+
+## 브릿지 시스템
+
+브릿지(Bridge)는 `src/bridge/` 디렉토리에 구현된 **IDE와 Claude Code CLI 간의 양방향 통신 채널** 입니다. 소스 코드 분석에 의하면 **WebSocket 전송** 과 **JWT 인증** 을 사용하며, 폴링 방식도 지원합니다.
+
+```
+IDE 확장 (VS Code / JetBrains)
+        │
+        │ WebSocket + JWT 인증
+        │ (폴링 폴백 지원)
+        ▼
+Claude Code CLI 프로세스 (src/bridge/)
+        │
+        │ 세션 메시징, 모델 변경, 도구 승인
+        ▼
+Claude 모델
+```
+
+브릿지는 다음 기능을 제공합니다.
+
+| 기능 | 설명 |
+|------|------|
+| 채팅 메시지 전달 | IDE 패널에서 입력한 메시지를 CLI로 전달 |
+| 파일 편집 동기화 | Claude의 파일 수정을 IDE 네이티브 diff로 표시 |
+| 모델 변경 | 세션 도중 IDE에서 모델 전환 가능 |
+| 도구 승인 | IDE UI에서 도구 실행 승인/거부 처리 |
+| 컨텍스트 공유 | 현재 열린 파일, 선택 영역 등 IDE 컨텍스트 전달 |
+
+## 원격 모드
+
+`CLAUDE_CODE_REMOTE=1` 환경 변수로 **원격 실행 모드**를 활성화합니다.
+
+```bash
+export CLAUDE_CODE_REMOTE=1
+claude --print "저장소를 분석해 주세요"
+```
+
+원격 모드의 특성:
+
+| 항목 | 일반 모드 | 원격 모드 |
+|------|-----------|-----------|
+| Git 컨텍스트 수집 | 자동 수집 | **생략** |
+| 대화형 UI | 활성화 | 비활성화 |
+| 출력 형식 | 사람이 읽기 좋은 형식 | 구조화된 JSON |
+| 적합한 용도 | 로컬 개발 | CI/CD, 자동화 |
+
+## 업스트림 프록시
+
+기업 환경에서는 **업스트림 프록시**를 통해 API 요청을 중계할 수 있습니다.
+
+```bash
+# 프록시 설정
+export HTTPS_PROXY="https://proxy.company.com:8080"
+export CLAUDE_CODE_API_ENDPOINT="https://internal-gateway.company.com/claude"
+```
+
+이를 통해 보안 정책 준수, 비용 모니터링, 요청 감사 로그 등을 중앙에서 관리할 수 있습니다.
+
+## 크론 스케줄링 (RemoteTrigger)
+
+`RemoteTrigger`를 사용하면 **정기적인 자동 실행**을 설정할 수 있습니다.
+
+```json
+// 매일 자정 코드 분석 실행
+{
+  "remoteTriggers": [
+    {
+      "id": "daily-analysis",
+      "schedule": "0 0 * * *",
+      "prompt": "저장소의 코드 품질을 분석하고 개선점을 보고해 주세요",
+      "outputFile": "./reports/daily-analysis.md"
+    },
+    {
+      "id": "weekly-security",
+      "schedule": "0 9 * * 1",
+      "prompt": "보안 취약점을 스캔하고 결과를 요약해 주세요",
+      "notify": "security-team@company.com"
+    }
+  ]
+}
+```
+
+크론 표현식 형식: `분 시간 일 월 요일`
+
+## 보이스 시스템
+
+Claude Code는 **음성 입력**을 지원합니다. 마이크를 통해 자연어로 명령을 내릴 수 있습니다.
+
+```bash
+# 보이스 모드 활성화
+claude --voice
+
+# 또는 설정에서 기본값으로 설정
+# settings.json
+{
+  "voiceInput": {
+    "enabled": true,
+    "language": "ko-KR",
+    "autoSubmit": false
+  }
+}
+```
+
+보이스 입력은 음성을 텍스트로 변환한 뒤 일반 텍스트 입력과 동일하게 처리됩니다. `autoSubmit: false`로 설정하면 음성 인식 결과를 확인 후 수동으로 제출할 수 있습니다.
+
+## 데몬 모드와 UDS Inbox
+
+소스 코드에서 확인된 추가 연결성 기능들입니다.
+
+### 데몬 모드 (Daemon)
+
+`claude --bg` 플래그로 **백그라운드 세션 관리** 를 활성화합니다. tmux와 통합되어 별도 터미널 없이 Claude Code 세션을 유지할 수 있습니다.
+
+### UDS Inbox
+
+**Unix Domain Socket** 기반의 크로스 세션 IPC 메커니즘입니다. `~/.claude/sessions/` 경로에서 소켓을 탐색하여 실행 중인 다른 Claude Code 세션과 통신할 수 있습니다.
+
+---
+
+import Quiz from '../../../components/learning/Quiz';
+
+<Quiz client:load section="08-connectivity" />

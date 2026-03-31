@@ -1,0 +1,157 @@
+---
+title: "IDE 통합과 CI/CD"
+description: "IDE 확장 통합, CI/CD 자동화, 헤드리스 에이전트, 비용 추적, 멀티턴 컨텍스트 관리를 학습합니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "IDE 확장이 영속적 프로세스와 파일 편집 훅을 통해 네이티브 diff를 표시하는 방식을 이해한다"
+  - "--output-format json --print 옵션으로 CI/CD 파이프라인에서 원샷 평가를 수행할 수 있다"
+  - "멀티턴 컨텍스트를 메시지 UUID로 관리하는 방법을 설명할 수 있다"
+estimated_minutes: 30
+references:
+  - title: "Claude Code SDK"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/sdk"
+  - title: "Ide Integrations"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/ide-integrations"
+---
+
+## IDE 통합
+
+Claude Code는 **VS Code**와 **JetBrains** IDE 확장을 통해 에디터에 직접 통합됩니다.
+
+```
+IDE 확장 동작 방식:
+
+1. 확장 활성화 → 영속적 claude 프로세스 스폰
+2. 채팅 패널에서 메시지 입력 → stdin으로 전달
+3. Claude가 파일 편집 → PostToolUse 훅 트리거
+4. 훅이 IDE API 호출 → 네이티브 diff 뷰어에 표시
+5. 사용자가 diff 승인/거부 → 결과를 Claude에게 피드백
+```
+
+| IDE | 확장명 | 특징 |
+|-----|--------|------|
+| VS Code | Claude Code | 인라인 diff, 채팅 패널, 터미널 통합 |
+| JetBrains | Claude Code | 프로젝트 트리 통합, 코드 액션 |
+
+## CI/CD 자동화
+
+CI/CD 파이프라인에서 Claude Code를 **원샷 평가 도구**로 활용할 수 있습니다.
+
+```yaml
+# GitHub Actions 예시
+- name: Claude Code 코드 리뷰
+  run: |
+    RESULT=$(claude \
+      --output-format json \
+      --print \
+      --max-turns 5 \
+      "변경된 파일들의 코드 품질을 검토하고 문제점을 JSON으로 반환해 주세요")
+
+    echo "$RESULT" | jq '.result'
+
+    # 심각한 문제 발견 시 실패
+    ISSUES=$(echo "$RESULT" | jq '.result.critical_issues // 0')
+    if [ "$ISSUES" -gt 0 ]; then
+      echo "심각한 코드 품질 문제 발견: $ISSUES개"
+      exit 1
+    fi
+```
+
+```bash
+# 로컬 원샷 실행
+claude \
+  --output-format json \
+  --print \
+  --system-prompt "당신은 CI/CD 코드 리뷰 봇입니다" \
+  "PR의 보안 취약점을 분석해 주세요"
+```
+
+`result` 필드를 파싱하여 평가 결과를 자동화 파이프라인에 통합합니다.
+
+## 헤드리스 에이전트
+
+UI 없이 백그라운드에서 실행되는 **헤드리스 에이전트** 구현 예시입니다.
+
+```typescript
+import { query } from '@anthropic-ai/claude-code';
+
+async function runBackgroundAgent(task: string) {
+  const results: string[] = [];
+
+  for await (const message of query({
+    prompt: task,
+    options: {
+      permissionMode: 'auto-edit',
+      maxTurns: 50,
+      systemPrompt: '자율적으로 작업을 완료하세요. 완료 시 요약을 제공하세요.',
+    }
+  })) {
+    if (message.type === 'assistant') {
+      results.push(message.message.content as string);
+    }
+    if (message.type === 'result') {
+      return {
+        success: !message.is_error,
+        cost: message.cost_usd,
+        summary: results[results.length - 1]
+      };
+    }
+  }
+}
+
+// 데몬 프로세스로 실행
+runBackgroundAgent('의존성 취약점을 스캔하고 패치 PR을 생성해 주세요')
+  .then(result => console.log('완료:', result));
+```
+
+## 비용 추적
+
+세션별, 도구별 비용을 추적하는 방법입니다.
+
+```typescript
+let totalCost = 0;
+const sessionCosts: Record<string, number> = {};
+
+for await (const message of query({ prompt, options })) {
+  if (message.type === 'result') {
+    totalCost += message.cost_usd;
+    sessionCosts[message.session_id] = message.cost_usd;
+
+    console.log({
+      cost: `$${message.cost_usd.toFixed(4)}`,
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      cacheHit: message.usage.cache_read_input_tokens,
+      duration: `${message.duration_ms}ms`
+    });
+  }
+}
+```
+
+## 멀티턴 컨텍스트 관리
+
+**메시지 UUID**를 활용하여 영속적인 멀티턴 대화를 관리합니다.
+
+```typescript
+// 첫 번째 대화
+const session1Messages: SDKMessage[] = [];
+for await (const msg of query({ prompt: '인증 모듈을 분석해 주세요', options })) {
+  session1Messages.push(msg);
+}
+const sessionId = session1Messages.find(m => m.type === 'system')?.session_id;
+
+// 같은 세션에서 후속 대화 (컨텍스트 유지)
+for await (const msg of query({
+  prompt: '발견된 문제를 수정해 주세요',
+  options: { ...options, resumeSessionId: sessionId }
+})) {
+  // 이전 대화 맥락이 유지됨
+}
+```
+
+---
+
+import Quiz from '../../../components/learning/Quiz';
+
+<Quiz client:load section="09-sdk-programmatic" />

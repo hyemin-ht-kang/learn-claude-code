@@ -1,0 +1,244 @@
+---
+title: "테마와 키바인딩"
+description: "Claude Code의 Vim 모드, 커스텀 키바인딩, 테마 설정 방법을 학습합니다."
+sidebar:
+  order: 5
+learning_objectives:
+  - "Vim 모드와 커스텀 키바인딩 설정 방법을 설명할 수 있다"
+  - "주요 키보드 단축키를 활용하여 Claude Code를 효율적으로 사용할 수 있다"
+  - "테마와 스타일링 옵션을 적용하는 방법을 안다"
+estimated_minutes: 20
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import Quiz from '../../../components/learning/Quiz';
+
+Claude Code는 다양한 사용자 인터페이스 커스터마이즈를 지원합니다. Vim 스타일 키바인딩부터 커스텀 단축키, 테마까지 개인 워크플로우에 맞게 조정할 수 있습니다.
+
+## Vim 모드
+
+Vim 사용자를 위한 vi 스타일 키바인딩 지원입니다. 입력창에서 Vim의 Normal/Insert 모드 전환이 가능합니다.
+
+### 활성화
+
+```json
+// ~/.claude/settings.json
+{
+  "vim": true
+}
+```
+
+또는 세션 중에 `/vim` 명령어로 토글합니다.
+
+### Vim 모드 동작
+
+```
+Insert 모드 (기본)
+  → 일반 텍스트 입력
+  → Esc → Normal 모드로 전환
+
+Normal 모드
+  → h/j/k/l: 커서 이동
+  → w/b: 단어 단위 이동
+  → 0/$: 행 처음/끝으로 이동
+  → dd: 현재 행 삭제
+  → i/a: Insert 모드로 전환
+  → /: 텍스트 검색
+```
+
+Vim 모드는 입력창(프롬프트 편집)에만 적용됩니다. Claude의 응답 출력에는 적용되지 않습니다.
+
+## 커스텀 키바인딩
+
+`~/.claude/keybindings.json` 파일에서 키바인딩을 설정합니다.
+
+### 기본 구조
+
+```json
+// ~/.claude/keybindings.json
+[
+  {
+    "key": "ctrl+shift+c",
+    "command": "clear-context",
+    "description": "컨텍스트 초기화"
+  },
+  {
+    "key": "ctrl+shift+m",
+    "command": "toggle-memory",
+    "description": "메모리 에디터 토글"
+  }
+]
+```
+
+### 코드 단축키 예시
+
+```json
+[
+  {
+    "key": "ctrl+enter",
+    "command": "submit",
+    "description": "멀티라인 입력 제출"
+  },
+  {
+    "key": "alt+up",
+    "command": "history-prev",
+    "description": "이전 입력 히스토리"
+  },
+  {
+    "key": "alt+down",
+    "command": "history-next",
+    "description": "다음 입력 히스토리"
+  },
+  {
+    "key": "ctrl+k",
+    "command": "clear-line",
+    "description": "현재 입력 행 삭제"
+  }
+]
+```
+
+<Aside type="tip">
+키바인딩 충돌이 발생하면 터미널 자체의 단축키와 겹치는지 확인하세요. `ctrl+c`, `ctrl+z` 등은 터미널이 먼저 처리하므로 재정의할 수 없습니다.
+</Aside>
+
+## 기본 키보드 단축키
+
+설정 없이 기본으로 제공되는 단축키입니다.
+
+### 실행 제어
+
+| 단축키 | 동작 |
+|--------|------|
+| `Ctrl+C` | 현재 실행 중단, 도구 취소 |
+| `Ctrl+D` | 세션 종료 |
+| `Enter` | 단일 행 입력 제출 |
+| `Shift+Enter` | 멀티라인 입력 (줄바꿈) |
+
+### 탐색
+
+| 단축키 | 동작 |
+|--------|------|
+| `↑` / `↓` | 입력 히스토리 탐색 |
+| `Ctrl+A` | 행 처음으로 이동 |
+| `Ctrl+E` | 행 끝으로 이동 |
+| `Ctrl+W` | 단어 단위 삭제 |
+| `Ctrl+U` | 커서 앞 전체 삭제 |
+
+### 트랜스크립트 및 기록
+
+| 단축키 | 동작 |
+|--------|------|
+| `Ctrl+O` | 대화 트랜스크립트 열기 |
+| `Ctrl+R` | 히스토리 검색 (reverse-i-search) |
+
+## 풀스크린 모드
+
+```bash
+claude --fullscreen
+```
+
+터미널 전체 화면을 활용하는 모드입니다. 일반 터미널 출력과 완전히 분리된 공간에서 Claude Code가 실행됩니다. 다른 명령어 출력이 Claude 대화를 방해하지 않습니다.
+
+## 테마와 스타일링
+
+### 색상 테마
+
+```json
+// ~/.claude/settings.json
+{
+  "theme": "dark",       // "dark" | "light" | "auto"
+  "colorScheme": "monokai"
+}
+```
+
+`auto`로 설정하면 터미널의 배경색을 감지하여 자동으로 dark/light를 선택합니다.
+
+### 출력 색상 비활성화
+
+```bash
+# ANSI 색상 코드를 지원하지 않는 환경
+NO_COLOR=1 claude
+
+# 또는 설정 파일로
+# { "colors": false }
+```
+
+### 코드 하이라이팅
+
+Claude가 코드 블록을 출력할 때 언어에 맞는 문법 강조가 적용됩니다.
+
+```typescript
+// 이런 코드는 TypeScript 문법으로 색상 강조됨
+function greet(name: string): string {
+  return `Hello, ${name}!`
+}
+```
+
+지원 언어: TypeScript, JavaScript, Python, Rust, Go, Java, C/C++, Shell 등 주요 언어
+
+## 설정 파일 전체 구조
+
+모든 UI 관련 설정을 한 파일에서 관리합니다.
+
+```json
+// ~/.claude/settings.json
+{
+  "vim": false,
+  "theme": "auto",
+  "colors": true,
+  "fullscreen": false,
+  "notifications": {
+    "permission_prompt": true,
+    "idle_alert": true,
+    "idle_timeout_seconds": 30
+  },
+  "keybindings": {
+    "submit": "enter",
+    "multiline": "shift+enter",
+    "abort": "ctrl+c"
+  }
+}
+```
+
+## 워크플로우별 권장 설정
+
+### 빠른 코드 편집
+
+```json
+{
+  "vim": true,
+  "theme": "dark",
+  "permissions": {
+    "defaultMode": "acceptEdits"
+  }
+}
+```
+
+### 탐색/분석 세션
+
+```json
+{
+  "vim": false,
+  "permissions": {
+    "defaultMode": "plan"
+  },
+  "notifications": {
+    "idle_alert": true,
+    "idle_timeout_seconds": 60
+  }
+}
+```
+
+### CI/자동화
+
+```bash
+# 색상과 UI 없이 순수 텍스트 출력
+NO_COLOR=1 claude --print --output-format json
+```
+
+---
+
+<Quiz client:load section="06-interface-ui" />

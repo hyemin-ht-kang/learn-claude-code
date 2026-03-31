@@ -1,0 +1,181 @@
+---
+title: "컨텍스트 컴팩션"
+description: "긴 대화에서 컨텍스트를 자동으로 요약하는 컴팩션 메커니즘을 학습합니다."
+sidebar:
+  order: 3
+learning_objectives:
+  - "컨텍스트 컴팩션이 언제, 어떻게 동작하는지 설명할 수 있다"
+  - "PreCompact와 PostCompact 훅으로 컴팩션을 커스터마이즈하는 방법을 안다"
+  - "수동 컴팩션과 자동 컴팩션의 차이를 이해한다"
+estimated_minutes: 20
+references:
+  - title: "Claude Code 컨텍스트 관리"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/context-management"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Claude Code의 대화 세션이 길어지면 컨텍스트 윈도우가 포화 상태에 가까워집니다. 이때 **컨텍스트 컴팩션(Context Compaction)** 이 오래된 메시지를 요약하여 공간을 확보합니다. 중요한 점은 원본 대화는 손실 없이 보존된다는 것입니다.
+
+## 컴팩션의 핵심 원칙
+
+컴팩션을 이해하기 위한 핵심 구분:
+
+```
+원본 트랜스크립트 (디스크)     ←  항상 완전 보존
+         ≠
+API 전송 컨텍스트 (메모리)     ←  컴팩션으로 요약됨
+```
+
+컴팩션은 **API에 전송되는 메시지에만 영향** 을 미칩니다. 디스크에 저장된 대화 기록은 항상 완전히 보존됩니다. `/transcript` 명령어나 세션 재개 시 전체 히스토리를 조회할 수 있습니다.
+
+## 자동 컴팩션 트리거
+
+컨텍스트 윈도우가 특정 임계값(일반적으로 용량의 약 80%)에 도달하면 쿼리 엔진이 자동으로 컴팩션을 트리거합니다.
+
+```
+대화 진행 중
+    │
+    ├─ 컨텍스트 사용량 모니터링
+    │
+    ├─ 임계값 도달 감지 (예: 80% 포화)
+    │
+    ├─ PreCompact 훅 실행
+    │
+    ├─ 오래된 메시지 요약 생성
+    │   └─ "사용자가 auth 모듈 리팩토링을 요청했고,
+    │       JWT 토큰 검증 로직을 수정했으며..."
+    │
+    ├─ 요약으로 오래된 메시지 교체 (API 전송용만)
+    │
+    └─ PostCompact 훅 실행
+```
+
+## 수동 컴팩션
+
+언제든지 `/compact` 명령어로 수동 컴팩션을 실행할 수 있습니다.
+
+```
+/compact
+```
+
+긴 디버깅 세션 후 새로운 주제로 전환하기 전, 또는 컨텍스트를 정리하고 싶을 때 유용합니다.
+
+## PreCompact 훅
+
+컴팩션 직전에 실행되는 훅입니다. 커스텀 컴팩션 지시사항을 추가하거나 컴팩션을 차단할 수 있습니다.
+
+```json
+// ~/.claude/settings.json
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "type": "command",
+        "command": "~/.claude/hooks/pre-compact.sh"
+      }
+    ]
+  }
+}
+```
+
+### 종료 코드별 동작
+
+| 종료 코드 | 동작 |
+|-----------|------|
+| `exit 0` | stdout 출력을 컴팩션 지시사항에 추가 |
+| `exit 2` | 컴팩션 차단 (즉시 중단) |
+| 기타 | 오류로 처리 |
+
+### PreCompact 훅 예시
+
+```bash
+#!/bin/bash
+# ~/.claude/hooks/pre-compact.sh
+
+# 중요한 변수명과 결정 사항을 컴팩션에 포함시키도록 지시
+echo "컴팩션 시 다음을 반드시 보존하세요:"
+echo "- 결정된 아키텍처 패턴"
+echo "- 수정한 파일 목록과 변경 이유"
+echo "- 미해결 TODO 항목"
+exit 0
+```
+
+```bash
+#!/bin/bash
+# 특정 조건에서 컴팩션 차단
+if [ "$CONTEXT_USAGE" -lt "70" ]; then
+  echo "컨텍스트 여유 있음, 컴팩션 불필요"
+  exit 2  # 컴팩션 차단
+fi
+exit 0
+```
+
+## PostCompact 훅
+
+컴팩션 완료 후 실행되는 훅입니다. 알림 전송, 로깅, 상태 업데이트 등에 활용합니다.
+
+```bash
+#!/bin/bash
+# ~/.claude/hooks/post-compact.sh
+
+# 컴팩션 완료 알림
+echo "컨텍스트 컴팩션 완료: $(date)" >> ~/.claude/compaction.log
+# macOS 알림
+osascript -e 'display notification "컨텍스트 압축 완료" with title "Claude Code"'
+```
+
+## 컴팩션 유형 구분
+
+컴팩션이 어떻게 트리거되었는지 구분할 수 있습니다.
+
+```typescript
+// 훅에서 트리거 유형 확인 가능
+const triggerType = process.env.COMPACTION_TRIGGER
+// "manual"  → /compact 명령어로 수동 트리거
+// "auto"    → 컨텍스트 포화로 자동 트리거
+```
+
+이를 활용해 수동 컴팩션과 자동 컴팩션에 다른 처리를 적용할 수 있습니다.
+
+```bash
+#!/bin/bash
+if [ "$COMPACTION_TRIGGER" = "auto" ]; then
+  echo "자동 컴팩션: 모든 진행 중인 작업 상태를 보존하세요"
+else
+  echo "수동 컴팩션: 완료된 항목은 간략히 요약하세요"
+fi
+exit 0
+```
+
+## 컴팩션과 세션 재개
+
+컴팩션된 세션을 재개할 때(`--resume`), Claude Code는 원본 트랜스크립트를 디스크에서 로드합니다.
+
+```bash
+# 이전 세션 재개
+claude --resume
+
+# 특정 세션 ID로 재개
+claude --resume abc123
+```
+
+<Aside type="tip">
+컴팩션 후에도 `/transcript` 명령어로 전체 대화 기록을 확인할 수 있습니다. 컴팩션은 API 전송을 최적화할 뿐 기록을 삭제하지 않습니다.
+</Aside>
+
+## 실용적 활용 패턴
+
+장시간 세션에서 컴팩션을 효과적으로 활용하는 방법입니다.
+
+```markdown
+# PreCompact 지시사항 예시
+다음 정보를 컴팩션 요약에 반드시 포함하세요:
+1. 현재 구현 중인 기능명
+2. 완료된 단계와 미완료 단계
+3. 발견된 버그와 해결 방법
+4. 결정된 설계 패턴 (변경 이유 포함)
+5. 수정된 파일 목록
+```
+
+이런 지시사항이 있으면 컴팩션 후에도 중요한 컨텍스트가 보존되어 작업 연속성이 유지됩니다.

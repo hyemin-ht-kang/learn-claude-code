@@ -1,0 +1,63 @@
+---
+title: Claude Code 소스 코드 Deep Dive
+description: Claude Code의 내부 아키텍처를 1,902개 소스 파일을 통해 심층 분석하는 학습 사이트
+template: splash
+hero:
+  tagline: 부팅 시퀀스부터 미공개 기능까지, Claude Code의 모든 것을 해부합니다
+  actions:
+    - text: 학습 시작하기
+      link: /learn-claude-code/01-core-architecture/01-overview/
+      icon: right-arrow
+      variant: primary
+    - text: GitHub
+      link: https://github.com/anthropics/claude-code
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## 커리큘럼 개요
+
+이 학습 사이트는 Claude Code v2.1.88의 소스 코드를 기반으로, 50개 챕터에 걸쳐 내부 아키텍처를 심층 분석합니다.
+
+<CardGrid>
+  <Card title="01. 핵심 아키텍처 (~150분)" icon="rocket">
+    부팅 시퀀스, 에이전틱 루프, 쿼리 엔진, 상태 관리 등 Claude Code의 핵심 동작 원리를 학습합니다.
+  </Card>
+  <Card title="02. 도구 시스템 (~180분)" icon="setting">
+    파일 도구, Bash 도구, 검색 도구, 웹 도구 등 5가지 도구 카테고리의 구현과 확장 메커니즘을 분석합니다.
+  </Card>
+  <Card title="03. 에이전트 지능 (~150분)" icon="puzzle">
+    서브에이전트 스폰, 멀티에이전트 실행, 코디네이터 모드, 워크트리 격리 등 에이전트 오케스트레이션을 탐구합니다.
+  </Card>
+  <Card title="04. 권한과 보안 (~120분)" icon="warning">
+    6가지 권한 모드, 규칙 매칭, Bash 보안, 샌드박스 등 Claude Code의 안전장치를 이해합니다.
+  </Card>
+  <Card title="05. 메모리와 컨텍스트 (~150분)" icon="open-book">
+    CLAUDE.md 4계층 메모리, 컨텍스트 어셈블리, 컴팩션, @include 지시자 등 기억 시스템을 분석합니다.
+  </Card>
+  <Card title="06. 인터페이스와 UI (~130분)" icon="laptop">
+    Ink 렌더러, 대화형/비대화형 모드, 명령어 시스템, 테마와 키바인딩을 학습합니다.
+  </Card>
+  <Card title="07. 인프라스트럭처 (~170분)" icon="document">
+    설정 시스템, 훅, 스킬, 세션 관리, 플러그인, 에러 핸들링 등 내부 인프라를 탐구합니다.
+  </Card>
+  <Card title="08. 연결성과 확장 (~140분)" icon="sun">
+    MCP 통합, OAuth 인증, Git 통합, 브릿지 시스템 등 외부 연결 메커니즘을 분석합니다.
+  </Card>
+  <Card title="09. SDK와 프로그래매틱 사용 (~120분)" icon="pencil">
+    SDK 아키텍처, 제어 프로토콜, TypeScript API, IDE/CI/CD 통합을 학습합니다.
+  </Card>
+  <Card title="10. 미공개 기능과 전체 조망 (~130분)" icon="star">
+    모델 시스템, BUDDY, KAIROS, ULTRAPLAN 등 미공개 기능과 전체 아키텍처 설계 철학을 조망합니다.
+  </Card>
+</CardGrid>
+
+## 학습 가이드
+
+- **초급** (섹션 01-02): Claude Code의 기본 동작 원리와 도구 시스템
+- **중급** (섹션 03-06): 에이전트, 권한, 메모리, 인터페이스의 심화 이해
+- **고급** (섹션 07-10): 인프라, 연결성, SDK, 미공개 기능의 전문 지식
+
+각 챕터는 20~40분 분량이며, 섹션 마지막에 인터랙티브 퀴즈가 포함되어 있습니다.

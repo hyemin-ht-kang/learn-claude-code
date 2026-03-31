@@ -1,0 +1,178 @@
+---
+title: "컨텍스트 어셈블리"
+description: "Claude Code가 시스템 컨텍스트와 사용자 컨텍스트를 조합하는 방식을 이해합니다."
+sidebar:
+  order: 2
+learning_objectives:
+  - "getSystemContext()와 getUserContext()가 수집하는 정보를 설명할 수 있다"
+  - "컨텍스트 캐싱 메커니즘과 무효화 조건을 이해한다"
+  - "환경 변수로 컨텍스트 수집을 제어하는 방법을 안다"
+estimated_minutes: 25
+references:
+  - title: "Claude Code 동작 원리"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/how-it-works"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Claude Code는 매 쿼리마다 Claude API에 보내는 시스템 프롬프트를 동적으로 조립합니다. 이 과정은 `context.ts` 모듈의 두 함수가 담당합니다. **getSystemContext()** 는 개발 환경 정보를, **getUserContext()** 는 메모리와 날짜 정보를 수집합니다.
+
+## getSystemContext()
+
+시스템 컨텍스트는 현재 Git 저장소와 개발 환경에 관한 정보를 제공합니다.
+
+### 수집하는 정보
+
+```typescript
+// 수집 항목 요약
+{
+  gitBranch: "feature/auth",           // 현재 브랜치
+  defaultBranch: "main",               // 기본 브랜치 (main/master)
+  username: "reserve",                 // Git 사용자명
+  gitStatus: "M src/auth.ts\n...",     // git status 출력 (최대 2,000자)
+  recentCommits: [                     // 최근 5개 커밋
+    "abc1234 feat: add login endpoint",
+    "def5678 fix: token expiry bug",
+    ...
+  ],
+  cacheInvalidationString: "v2026..."  // 캐시 무효화 문자열
+}
+```
+
+### Git 상태 출력 제한
+
+`git status` 출력은 **최대 2,000자** 로 잘립니다. 변경된 파일이 많은 대규모 저장소에서 컨텍스트 윈도우를 과도하게 소비하지 않도록 하는 조치입니다.
+
+```bash
+# 변경 파일이 100개라면 전체가 아닌 앞부분 2,000자만 포함됨
+git status
+# M  src/api/auth.ts
+# M  src/api/users.ts
+# M  src/services/email.ts
+# ... (잘림)
+```
+
+### Git 컨텍스트 생략 조건
+
+다음 경우에는 Git 컨텍스트 수집을 건너뜁니다.
+
+```bash
+# 원격 환경 플래그
+CLAUDE_CODE_REMOTE=1 claude
+
+# Git 지시사항 비활성화 플래그
+CLAUDE_CODE_NO_GIT=1 claude
+```
+
+Git이 설치되지 않은 환경이거나, Git 정보가 필요 없는 문서 작업 등에서 활용합니다.
+
+## getUserContext()
+
+사용자 컨텍스트는 메모리 파일과 현재 날짜를 수집합니다.
+
+### CLAUDE.md 메모리 파일 로딩
+
+4계층 계층 구조의 모든 파일을 순서대로 로드합니다.
+
+```
+Level 1: /etc/claude-code/CLAUDE.md
+Level 2: ~/.claude/CLAUDE.md + ~/.claude/rules/*.md
+Level 3: 프로젝트 CLAUDE.md + .claude/rules/*.md
+Level 4: CLAUDE.local.md
+```
+
+각 파일의 내용이 시스템 프롬프트에 포함되어 Claude가 세션 내내 참고합니다.
+
+### 현재 날짜 주입
+
+```typescript
+// 매 세션마다 현재 날짜를 컨텍스트에 주입
+`Today's date is ${new Date().toISOString().split('T')[0]}.`
+// → "Today's date is 2026-03-31."
+```
+
+Claude의 학습 데이터에는 시간이 지난 정보가 포함되어 있습니다. 현재 날짜를 주입하면 Claude가 날짜에 민감한 판단(최신 버전 확인, 기간 계산 등)을 올바르게 수행할 수 있습니다.
+
+### 사용자 컨텍스트 비활성화 조건
+
+```bash
+# CLAUDE.md 로딩 비활성화
+CLAUDE_CODE_DISABLE_CLAUDE_MDS=1 claude
+
+# 최소 모드 (설정 파일 무시)
+claude --bare
+```
+
+<Aside type="tip">
+`--bare` 모드는 CLAUDE.md를 무시하므로 프로젝트 설정 없이 순수하게 Claude Code를 테스트할 때 유용합니다.
+</Aside>
+
+## 캐싱 메커니즘
+
+컨텍스트 조립은 비용이 있는 작업입니다. Git 명령어 실행과 파일 읽기가 포함되기 때문입니다. Claude Code는 **lodash/memoize** 를 사용하여 두 함수의 결과를 캐싱합니다.
+
+```typescript
+// 개념적 구현
+const getSystemContext = memoize(async () => {
+  const branch = await exec('git branch --show-current')
+  const status = await exec('git status --short')
+  const commits = await exec('git log --oneline -5')
+  return { branch, status, commits }
+})
+
+const getUserContext = memoize(async () => {
+  const memories = await loadClaudeMdFiles()
+  const date = new Date().toISOString().split('T')[0]
+  return { memories, date }
+})
+```
+
+### 캐시 유효 범위
+
+캐시는 **대화 세션 전체** 동안 유지됩니다. 세션 중에 파일을 수정해도 다음 쿼리에 즉시 반영되지 않습니다.
+
+### 캐시 즉시 무효화
+
+`setSystemPromptInjection()` 호출 시 캐시가 즉시 클리어됩니다.
+
+```typescript
+// 외부에서 시스템 프롬프트를 동적으로 변경할 때
+setSystemPromptInjection("새로운 컨텍스트 주입")
+// → 기존 캐시 클리어
+// → 다음 쿼리에서 새 컨텍스트로 재조립
+```
+
+`/memory` 명령어로 메모리를 수동으로 다시 로드할 때도 캐시가 클리어됩니다.
+
+## 컨텍스트 조립 전체 흐름
+
+```
+세션 시작
+    │
+    ├─ getSystemContext() (memoize)
+    │   ├─ git branch --show-current
+    │   ├─ git log --oneline -5
+    │   ├─ git status (최대 2,000자)
+    │   └─ 캐시 저장
+    │
+    ├─ getUserContext() (memoize)
+    │   ├─ CLAUDE.md 파일들 로드 (4계층)
+    │   ├─ "Today's date is YYYY-MM-DD" 주입
+    │   └─ 캐시 저장
+    │
+    └─ 시스템 프롬프트 조립
+        ├─ [System] + [Git Info] + [Memories] + [Date]
+        └─ Claude API 전송
+```
+
+| 항목 | 출처 | 제한 |
+|------|------|------|
+| Git 브랜치 | `git branch --show-current` | 없음 |
+| Git 상태 | `git status --short` | 2,000자 |
+| 최근 커밋 | `git log --oneline -5` | 5개 |
+| 메모리 파일 | CLAUDE.md 4계층 | 총 40,000자 권장 |
+| 현재 날짜 | `new Date()` | 없음 |
+
+<Aside type="caution">
+대용량 CLAUDE.md 파일은 매 쿼리마다 컨텍스트 윈도우를 소비합니다. 40,000자 권장 한도를 초과하면 실제 작업에 사용할 수 있는 컨텍스트가 줄어듭니다.
+</Aside>

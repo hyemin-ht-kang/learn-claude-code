@@ -1,0 +1,173 @@
+---
+title: "파일 도구"
+description: "Read, Edit, Write, Glob 네 가지 파일 도구의 동작 방식과 올바른 사용법을 이해합니다."
+sidebar:
+  order: 2
+learning_objectives:
+  - "Read, Edit, Write, Glob 각 도구의 핵심 동작 방식과 제약을 설명할 수 있다"
+  - "Edit 도구 사용 전 Read가 필수인 이유를 이해할 수 있다"
+  - "네 가지 도구를 적재적소에 선택하여 사용할 수 있다"
+estimated_minutes: 30
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 파일 도구 개요
+
+파일 도구는 Claude Code에서 가장 자주 사용되는 도구들입니다. Read, Edit, Write, Glob 네 가지 도구가 파일 시스템과의 모든 상호작용을 담당합니다.
+
+이 네 도구는 모두 **자동 승인** 됩니다. 사용자의 개입 없이 즉시 실행되므로, 동작 방식을 정확히 이해하는 것이 중요합니다.
+
+## 도구 비교표
+
+| 항목 | Read | Edit | Write | Glob |
+|------|------|------|-------|------|
+| 목적 | 파일 읽기 | 문자열 치환 | 파일 생성/덮어쓰기 | 파일 패턴 탐색 |
+| 사전 Read 필요 | 불필요 | **필수** | 기존 파일은 필수 | 불필요 |
+| 권한 | 자동 승인 | 자동 승인 | 자동 승인 | 자동 승인 |
+| 결과 크기 제한 | 200,000자 | 해당 없음 | 해당 없음 | 해당 없음 |
+
+## Read 도구
+
+파일 내용을 읽어 모델에 전달합니다. `cat -n` 형식으로 라인 번호를 포함하여 출력합니다.
+
+```
+// Read 출력 형식
+     1	import { useState } from 'react'
+     2
+     3	export function Counter() {
+     4	  const [count, setCount] = useState(0)
+     5	  ...
+```
+
+### 주요 파라미터
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `file_path` | string | 필수 | 절대 경로 |
+| `offset` | number | 1 | 읽기 시작 라인 |
+| `limit` | number | 2000 | 최대 읽을 라인 수 |
+
+```typescript
+// 대용량 파일의 특정 부분만 읽기
+{
+  file_path: "/src/large-file.ts",
+  offset: 500,   // 500번 라인부터
+  limit: 100     // 100줄만 읽기
+}
+```
+
+### 지원 파일 형식
+
+- **텍스트 파일**: 모든 소스 코드, 설정 파일
+- **이미지**: PNG, JPG, GIF, WebP (멀티모달 처리)
+- **PDF**: 최대 20페이지씩 읽기, `pages` 파라미터 지정
+- **Jupyter 노트북**: `.ipynb` 파일을 셀·출력·시각화 포함하여 처리
+
+기본 제한은 **2000줄** 입니다. 더 큰 파일은 `offset`/`limit` 으로 분할 읽기를 해야 합니다.
+
+## Edit 도구
+
+파일 내의 **정확한 문자열을 찾아 교체** 합니다. 전체 파일을 덮어쓰지 않고 필요한 부분만 변경하므로 컨텍스트 효율이 높습니다.
+
+```typescript
+// Edit 파라미터
+{
+  file_path: "/src/auth.ts",
+  old_string: "function login(user: string) {",
+  new_string: "async function login(user: string): Promise<void> {",
+  replace_all: false  // true면 모든 일치 항목 교체
+}
+```
+
+### 사전 Read 필수 규칙
+
+Edit 도구는 **반드시 해당 파일을 Read한 이후** 에만 사용해야 합니다. 이 규칙이 존재하는 이유:
+
+1. **정확한 문자열 파악**: 탭/공백, 줄바꿈, 따옴표 종류 등을 정확히 알아야 매칭됩니다
+2. **컨텍스트 확인**: 같은 문자열이 여러 곳에 있을 때 올바른 위치를 특정해야 합니다
+3. **도구 검증**: 시스템이 Read 없이 Edit 시도를 감지하면 오류를 반환합니다
+
+```bash
+# 오류 예시: Read 없이 Edit 시도
+Error: Cannot edit file without reading it first.
+Use the Read tool to read /src/auth.ts before editing.
+```
+
+### 모호한 매칭 처리
+
+`old_string` 이 파일 내에서 **2회 이상 발견** 되면 Edit가 실패합니다. 더 많은 컨텍스트를 포함하여 고유하게 만들어야 합니다.
+
+```typescript
+// 실패: "return null"이 파일에 5번 등장
+{ old_string: "return null" }
+
+// 성공: 주변 컨텍스트를 포함하여 고유하게 특정
+{ old_string: "  if (!user) {\n    return null\n  }" }
+```
+
+### replace_all 옵션
+
+`replace_all: true` 로 설정하면 파일 내 모든 일치 항목을 한 번에 교체합니다. 변수명 변경이나 오타 일괄 수정에 유용합니다.
+
+## Write 도구
+
+파일을 **새로 생성** 하거나 기존 파일을 **완전히 덮어씁니다**.
+
+```typescript
+// 새 파일 생성
+{
+  file_path: "/src/utils/format.ts",
+  content: "export function formatDate(date: Date): string {\n  ..."
+}
+```
+
+### 기존 파일 덮어쓰기 시 주의
+
+기존 파일에 Write를 사용할 경우, 반드시 **사전 Read** 가 필요합니다. 이유:
+- Read 없이 Write하면 파일의 현재 내용을 모르는 상태에서 덮어씁니다
+- 시스템이 이를 감지하고 오류를 반환합니다
+
+**Edit vs Write 선택 기준:**
+
+| 상황 | 권장 도구 | 이유 |
+|------|----------|------|
+| 일부 수정 | Edit | 변경량이 적고 실수 위험이 낮음 |
+| 새 파일 생성 | Write | 기존 내용이 없음 |
+| 전체 재작성 | Write | 변경량이 너무 많아 Edit가 비효율적 |
+| 설정 파일 전체 교체 | Write | 구조가 크게 바뀔 때 |
+
+## Glob 도구
+
+파일 시스템에서 **패턴으로 파일을 탐색** 합니다. 결과는 수정 시간 기준 최신 순으로 정렬됩니다.
+
+```typescript
+// 패턴 예시
+{ pattern: "**/*.ts" }           // 모든 TypeScript 파일
+{ pattern: "src/**/*.test.ts" }  // src 하위 테스트 파일
+{ pattern: "*.{json,yaml}" }     // JSON 또는 YAML 파일
+{ pattern: "**/__tests__/**" }   // __tests__ 디렉토리 내 모든 파일
+```
+
+### 와일드카드 문법
+
+| 패턴 | 의미 | 예시 |
+|------|------|------|
+| `*` | 단일 경로 세그먼트 내 임의 문자 | `*.ts` |
+| `**` | 임의 깊이의 디렉토리 | `src/**/*.ts` |
+| `?` | 단일 문자 | `file?.ts` |
+| `{a,b}` | a 또는 b | `*.{ts,tsx}` |
+| `[abc]` | 문자 집합 | `file[123].ts` |
+
+### 효율적인 파일 탐색 전략
+
+```
+1. Glob → 관련 파일 목록 파악
+        ↓
+2. Grep → 특정 내용이 있는 파일 필터링
+        ↓
+3. Read → 필요한 파일만 상세 확인
+```
+
+이 순서를 따르면 Read로 불필요한 파일을 읽는 것을 방지하고 컨텍스트 윈도우를 효율적으로 사용할 수 있습니다.

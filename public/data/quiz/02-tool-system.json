@@ -1,0 +1,135 @@
+{
+  "id": "02-tool-system",
+  "title": "도구 시스템",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "Claude Code의 도구 카테고리는 몇 가지로 분류되나요?",
+      "options": ["3가지", "5가지", "7가지", "10가지"],
+      "answer": 1,
+      "explanation": "Claude Code의 도구는 파일 조작, 실행, 검색, 웹, 에이전트의 5가지 카테고리로 분류됩니다."
+    },
+    {
+      "id": "q2",
+      "question": "Read 도구와 Edit 도구의 주요 차이점은 무엇인가요?",
+      "options": [
+        "Read는 바이너리 파일만, Edit는 텍스트 파일만 처리한다",
+        "Read는 파일 내용을 읽기만 하고, Edit는 기존 파일의 내용을 수정한다",
+        "Read는 로컬 파일만, Edit는 원격 파일만 다룬다",
+        "두 도구는 완전히 동일한 기능을 한다"
+      ],
+      "answer": 1,
+      "explanation": "Read 도구는 파일 내용을 읽어서 반환하고, Edit 도구는 old_string을 new_string으로 교체하는 정밀 수정을 수행합니다. Write 도구는 파일 전체를 새로 씁니다."
+    },
+    {
+      "id": "q3",
+      "question": "Bash 도구에서 보안상 기본적으로 차단되는 명령어 유형은?",
+      "options": [
+        "파일 읽기 명령어(cat, less)",
+        "네트워크 접근 및 권한 상승 명령어(sudo, curl 일부)",
+        "디렉터리 탐색 명령어(ls, pwd)",
+        "텍스트 처리 명령어(grep, awk)"
+      ],
+      "answer": 1,
+      "explanation": "Bash 도구는 보안을 위해 권한 상승(sudo), 특정 네트워크 명령어 등을 제한합니다. 실행 전 checkPermissions로 권한을 검사합니다."
+    },
+    {
+      "id": "q4",
+      "question": "Glob 도구의 주요 용도는 무엇인가요?",
+      "options": [
+        "파일 내용을 검색한다",
+        "파일 이름 패턴으로 파일 목록을 찾는다",
+        "파일을 압축한다",
+        "파일 권한을 변경한다"
+      ],
+      "answer": 1,
+      "explanation": "Glob 도구는 **/*.ts, src/**/*.json 같은 glob 패턴을 사용하여 파일 이름 기준으로 파일 목록을 찾습니다. 내용 검색은 Grep 도구가 담당합니다."
+    },
+    {
+      "id": "q5",
+      "question": "도구 결과의 최대 크기를 제한하는 설정 값 이름은 무엇인가요?",
+      "options": ["maxOutputBytes", "maxResultSizeChars", "outputLimit", "resultMaxLength"],
+      "answer": 1,
+      "explanation": "maxResultSizeChars는 도구 실행 결과의 최대 문자 수를 제한하는 설정으로, 과도하게 큰 출력이 컨텍스트 창을 채우는 것을 방지합니다."
+    },
+    {
+      "id": "q6",
+      "question": "도구 실행 전 호출되는 권한 확인 함수 이름은 무엇인가요?",
+      "options": ["validatePermission()", "checkPermissions()", "verifyAccess()", "authorizeAction()"],
+      "answer": 1,
+      "explanation": "checkPermissions()는 도구 실행 전에 현재 권한 모드와 규칙을 확인하여 해당 작업이 허용되는지 검사하는 함수입니다."
+    },
+    {
+      "id": "q7",
+      "question": "환경 변수 CLAUDE_CODE_SIMPLE=1을 설정하면 어떤 효과가 있나요?",
+      "options": [
+        "Claude Code를 더 빠르게 실행한다",
+        "복잡한 에이전트 기능을 비활성화하고 단순 모드로 실행한다",
+        "디버그 로그를 활성화한다",
+        "모든 권한 확인을 건너뛴다"
+      ],
+      "answer": 1,
+      "explanation": "CLAUDE_CODE_SIMPLE=1은 복잡한 에이전트 기능과 일부 고급 도구를 비활성화하여 단순하고 가벼운 모드로 Claude Code를 실행하게 합니다."
+    },
+    {
+      "id": "q8",
+      "question": "MCP 도구의 이름 형식은 어떻게 되나요?",
+      "options": [
+        "도구명__서버명",
+        "mcp__서버명__도구명",
+        "서버명:도구명",
+        "mcp.서버명.도구명"
+      ],
+      "answer": 1,
+      "explanation": "MCP 도구는 mcp__서버명__도구명 형식으로 이름이 지정됩니다. 예를 들어 'filesystem' 서버의 'read_file' 도구는 mcp__filesystem__read_file이 됩니다."
+    },
+    {
+      "id": "q9",
+      "question": "NotebookEdit 도구는 어떤 파일 형식을 처리하나요?",
+      "options": [
+        "마크다운(.md) 파일",
+        "Jupyter Notebook(.ipynb) 파일",
+        "텍스트(.txt) 파일",
+        "HTML 파일"
+      ],
+      "answer": 1,
+      "explanation": "NotebookEdit 도구는 Jupyter Notebook(.ipynb) 파일의 셀을 추가, 수정, 삭제하는 특화 도구입니다."
+    },
+    {
+      "id": "q10",
+      "question": "TodoWrite 도구의 주요 목적은 무엇인가요?",
+      "options": [
+        "외부 todo 앱과 동기화한다",
+        "현재 세션에서 진행 중인 작업 목록을 추적하고 관리한다",
+        "파일 시스템에 todo 파일을 생성한다",
+        "팀 협업을 위한 할 일 목록을 공유한다"
+      ],
+      "answer": 1,
+      "explanation": "TodoWrite 도구는 현재 세션에서 진행 중인 작업을 추적하고, 단계별 진행 상황을 pending/in_progress/completed 상태로 관리합니다."
+    },
+    {
+      "id": "q11",
+      "question": "WebFetch 도구와 WebSearch 도구의 차이점은 무엇인가요?",
+      "options": [
+        "WebFetch는 특정 URL의 내용을 가져오고, WebSearch는 검색 쿼리로 웹을 검색한다",
+        "WebFetch는 이미지만, WebSearch는 텍스트만 처리한다",
+        "두 도구는 동일한 기능을 한다",
+        "WebFetch는 POST 요청만, WebSearch는 GET 요청만 한다"
+      ],
+      "answer": 0,
+      "explanation": "WebFetch는 지정된 URL의 웹 페이지 내용을 직접 가져오는 도구이고, WebSearch는 검색 엔진을 통해 쿼리에 맞는 웹 결과를 검색합니다."
+    },
+    {
+      "id": "q12",
+      "question": "Grep 도구가 Bash에서 grep 명령어를 직접 실행하는 것보다 나은 이유는?",
+      "options": [
+        "더 많은 정규식 패턴을 지원한다",
+        "권한 처리, 결과 크기 제한, 파일 타입 필터링이 최적화되어 있다",
+        "더 빠른 속도를 제공한다",
+        "바이너리 파일도 검색할 수 있다"
+      ],
+      "answer": 1,
+      "explanation": "Grep 도구는 Claude Code의 권한 시스템과 통합되고, maxResultSizeChars 제한을 적용하며, 파일 타입 필터링 등이 최적화되어 있어 직접 grep 명령어보다 안전하고 편리합니다."
+    }
+  ]
+}

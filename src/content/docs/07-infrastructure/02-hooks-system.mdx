@@ -1,0 +1,155 @@
+---
+title: "훅 시스템"
+description: "Claude Code의 이벤트 기반 자동화 메커니즘인 훅 시스템의 이벤트 유형과 명령어 타입을 학습합니다."
+sidebar:
+  order: 2
+learning_objectives:
+  - "훅의 exit 코드 의미(0, 2, 기타)와 각각의 동작 결과를 설명할 수 있다"
+  - "20가지 이상의 훅 이벤트 유형을 카테고리별로 분류할 수 있다"
+  - "command, http, prompt, agent 네 가지 훅 명령어 타입의 차이를 이해한다"
+estimated_minutes: 30
+references:
+  - title: "Claude Code 훅 레퍼런스"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/hooks"
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 훅이란?
+
+훅(Hook)은 Claude Code의 **이벤트 기반 자동화 메커니즘**입니다. 특정 이벤트가 발생했을 때 셸 명령어, HTTP 요청, LLM 프롬프트, 또는 에이전트를 자동으로 실행할 수 있습니다. 이를 통해 코드 포맷팅, 보안 검사, 알림 전송 등 반복적인 작업을 자동화할 수 있습니다.
+
+## Exit 코드 의미
+
+훅 명령어의 종료 코드에 따라 Claude Code의 동작이 달라집니다.
+
+| Exit 코드 | 의미 | 동작 |
+|-----------|------|------|
+| `0` | 성공 | 정상 진행, stdout이 있으면 Claude에게 주입 |
+| `2` | 차단/주입 | 도구 실행 차단 또는 응답에 텍스트 주입 |
+| 기타 (`1` 등) | 오류 | stderr 내용만 표시, 실행은 계속 |
+
+```bash
+# exit 2로 도구 실행 차단 예시
+#!/bin/bash
+if echo "$CLAUDE_TOOL_INPUT" | grep -q "rm -rf"; then
+  echo "위험한 명령어가 감지되었습니다" >&2
+  exit 2
+fi
+exit 0
+```
+
+## 훅 이벤트 유형
+
+Claude Code는 **20가지 이상**의 이벤트를 제공합니다.
+
+### 도구 이벤트
+
+| 이벤트 | 시점 | 차단 가능 |
+|--------|------|-----------|
+| `PreToolUse` | 도구 실행 직전 | 예 (exit 2) |
+| `PostToolUse` | 도구 실행 성공 후 | 아니오 |
+| `PostToolUseFailure` | 도구 실행 실패 후 | 아니오 |
+
+### 세션 이벤트
+
+| 이벤트 | 시점 |
+|--------|------|
+| `SessionStart` | 세션 시작 시 |
+| `Stop` | 응답 생성 완료 시 |
+| `UserPromptSubmit` | 사용자 메시지 전송 시 |
+| `SessionEnd` | 세션 종료 시 |
+
+### 대화 관리
+
+| 이벤트 | 시점 |
+|--------|------|
+| `PreCompact` | 컨텍스트 압축 직전 |
+| `PostCompact` | 컨텍스트 압축 완료 후 |
+
+### 설정 및 파일
+
+| 이벤트 | 시점 |
+|--------|------|
+| `Setup` | 초기 환경 구성 시 |
+| `ConfigChange` | 설정 파일 변경 시 |
+| `CwdChanged` | 작업 디렉토리 변경 시 |
+| `FileChanged` | 파일 변경 감지 시 |
+| `InstructionsLoaded` | CLAUDE.md 로드 시 (차단 불가) |
+
+### 멀티에이전트
+
+| 이벤트 | 시점 |
+|--------|------|
+| `SubagentStart` | 서브에이전트 시작 시 |
+| `SubagentStop` | 서브에이전트 종료 시 |
+| `TeammateIdle` | 팀메이트 에이전트 유휴 상태 시 |
+
+### 권한 및 태스크
+
+| 이벤트 | 시점 |
+|--------|------|
+| `PermissionRequest` | 권한 요청 시 |
+| `PermissionDenied` | 권한 거부 시 |
+| `Notification` | 알림 발생 시 |
+| `TaskCreated` | 태스크 생성 시 |
+| `TaskCompleted` | 태스크 완료 시 |
+
+### 워크트리
+
+| 이벤트 | 시점 |
+|--------|------|
+| `WorktreeCreate` | Git 워크트리 생성 시 |
+| `WorktreeRemove` | Git 워크트리 제거 시 |
+
+## 훅 명령어 유형
+
+| 유형 | 설명 | 사용 사례 |
+|------|------|-----------|
+| `command` | 셸 명령어 실행 | 코드 포맷팅, 린트, 파일 검사 |
+| `http` | HTTP POST 요청 전송 | 외부 서비스 알림, 웹훅 |
+| `prompt` | LLM 프롬프트 실행 | AI 기반 코드 리뷰, 자동 설명 생성 |
+| `agent` | 도구 접근 가능한 에이전트 | 복잡한 자동화, 멀티스텝 작업 |
+
+```json
+// settings.json 훅 설정 예시
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/check-dangerous-cmd.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "prettier --write $CLAUDE_FILE_PATH"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## 훅 변수
+
+훅 실행 시 다음 환경 변수가 자동으로 주입됩니다.
+
+| 변수 | 설명 |
+|------|------|
+| `$CLAUDE_FILE_PATH` | 현재 작업 중인 파일 경로 |
+| `$CLAUDE_TOOL_NAME` | 실행된 도구 이름 |
+| `$CLAUDE_TOOL_INPUT` | 도구에 전달된 입력 (JSON) |
+| `$ARGUMENTS` | 훅에 전달된 추가 인수 |
+
+훅 시스템을 통해 Claude Code를 팀의 개발 워크플로우에 긴밀하게 통합할 수 있습니다.

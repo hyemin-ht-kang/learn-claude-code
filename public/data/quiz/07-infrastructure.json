@@ -1,0 +1,145 @@
+{
+  "id": "07-infrastructure",
+  "title": "인프라스트럭처",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "Claude Code의 설정 파일 계층에서 가장 높은 우선순위를 갖는 파일은?",
+      "options": [
+        "~/.claude/settings.json (글로벌 설정)",
+        ".claude/settings.json (프로젝트 설정)",
+        ".claude/settings.local.json (로컬 설정)",
+        "모두 동일한 우선순위"
+      ],
+      "answer": 2,
+      "explanation": ".claude/settings.local.json은 개인 로컬 설정으로 가장 높은 우선순위를 가집니다. 이후 프로젝트 설정, 글로벌 설정 순으로 우선순위가 낮아집니다."
+    },
+    {
+      "id": "q2",
+      "question": "Claude Code의 훅 시스템이 지원하는 이벤트 수는 대략 몇 개인가요?",
+      "options": ["5개 이상", "10개 이상", "20개 이상", "50개 이상"],
+      "answer": 2,
+      "explanation": "Claude Code의 훅 시스템은 PreToolUse, PostToolUse, Stop 등 20개 이상의 이벤트를 지원하여 세밀한 자동화가 가능합니다."
+    },
+    {
+      "id": "q3",
+      "question": "훅 명령어 유형(Hook Command Type) 중 'http' 타입의 역할은?",
+      "options": [
+        "HTTP 서버를 시작한다",
+        "지정된 HTTP 엔드포인트에 이벤트 데이터를 전송한다",
+        "웹 페이지를 스크래핑한다",
+        "REST API를 생성한다"
+      ],
+      "answer": 1,
+      "explanation": "http 타입 훅은 이벤트 발생 시 지정된 HTTP 엔드포인트(웹훅)에 POST 요청으로 이벤트 데이터를 전송합니다. 외부 서비스와 통합할 때 사용합니다."
+    },
+    {
+      "id": "q4",
+      "question": "훅에서 exit 코드 0의 의미는?",
+      "options": [
+        "오류 발생",
+        "성공적으로 완료",
+        "작업 중단 요청",
+        "재시도 필요"
+      ],
+      "answer": 1,
+      "explanation": "exit 코드 0은 훅이 성공적으로 완료되었음을 의미합니다. 0이 아닌 exit 코드는 오류를 나타내며, 특정 코드는 작업 중단을 요청할 수 있습니다."
+    },
+    {
+      "id": "q5",
+      "question": "훅의 'prompt' 타입은 어떻게 동작하나요?",
+      "options": [
+        "사용자에게 입력을 요청한다",
+        "AI에게 추가 프롬프트를 전송하여 이벤트 처리를 위임한다",
+        "터미널에 메시지를 출력한다",
+        "파일에 로그를 기록한다"
+      ],
+      "answer": 1,
+      "explanation": "prompt 타입 훅은 이벤트 발생 시 Claude AI에게 추가 프롬프트를 전송하여 자동화된 AI 기반 처리를 수행합니다."
+    },
+    {
+      "id": "q6",
+      "question": "스킬 시스템(Skill System)에서 SKILL.md 파일의 역할은?",
+      "options": [
+        "스킬의 소스 코드를 담는다",
+        "스킬의 메타데이터, 트리거 조건, 실행 지침을 정의한다",
+        "스킬 실행 로그를 저장한다",
+        "스킬 의존성 패키지를 나열한다"
+      ],
+      "answer": 1,
+      "explanation": "SKILL.md는 스킬의 이름, 설명, 트리거 키워드, 실행 지침 등 메타데이터를 정의하는 마크다운 파일입니다."
+    },
+    {
+      "id": "q7",
+      "question": "네임스페이스 스킬(Namespaced Skill)의 형식은?",
+      "options": [
+        "skill-name",
+        "namespace/skill-name",
+        "namespace:skill-name",
+        "namespace.skill-name"
+      ],
+      "answer": 2,
+      "explanation": "네임스페이스 스킬은 namespace:skill-name 형식을 사용합니다. 예를 들어 oh-my-claudecode:autopilot처럼 조직/패키지명으로 스킬을 그룹화합니다."
+    },
+    {
+      "id": "q8",
+      "question": "JSON 트랜스크립트에 기록되는 정보가 아닌 것은?",
+      "options": [
+        "사용자 메시지와 AI 응답",
+        "도구 호출 및 결과",
+        "사용자의 키스트로크 입력 타이밍",
+        "세션 메타데이터"
+      ],
+      "answer": 2,
+      "explanation": "JSON 트랜스크립트는 메시지, 도구 호출/결과, 세션 메타데이터를 기록합니다. 키 입력 타이밍 같은 저수준 입력 데이터는 기록하지 않습니다."
+    },
+    {
+      "id": "q9",
+      "question": "Claude Code에서 환경 변수 ANTHROPIC_API_KEY의 역할은?",
+      "options": [
+        "Claude Code를 활성화하는 라이선스 키",
+        "Anthropic API에 인증하는 API 키",
+        "암호화 키",
+        "세션 식별자"
+      ],
+      "answer": 1,
+      "explanation": "ANTHROPIC_API_KEY는 Anthropic의 Claude API에 인증하기 위한 API 키입니다. 이 환경 변수가 설정되어야 Claude 모델과 통신할 수 있습니다."
+    },
+    {
+      "id": "q10",
+      "question": "훅에서 'agent' 타입을 사용하면 어떻게 동작하나요?",
+      "options": [
+        "새로운 Claude Code 프로세스를 시작한다",
+        "이벤트 처리를 위해 별도의 Claude 에이전트 서브세션을 실행한다",
+        "외부 에이전트 API를 호출한다",
+        "에이전트 로그를 수집한다"
+      ],
+      "answer": 1,
+      "explanation": "agent 타입 훅은 이벤트 발생 시 별도의 Claude 에이전트 서브세션을 생성하여 복잡한 자동화 작업을 처리합니다."
+    },
+    {
+      "id": "q11",
+      "question": "PreToolUse 훅이 exit 코드 2를 반환하면 어떻게 되나요?",
+      "options": [
+        "도구가 정상 실행된다",
+        "Claude Code가 종료된다",
+        "해당 도구 실행이 차단된다",
+        "경고 메시지만 표시된다"
+      ],
+      "answer": 2,
+      "explanation": "PreToolUse 훅에서 exit 코드 2를 반환하면 해당 도구의 실행이 차단됩니다. 이를 통해 특정 조건에서 도구 실행을 동적으로 막을 수 있습니다."
+    },
+    {
+      "id": "q12",
+      "question": "에러 핸들링에서 도구 실행 실패 시 Claude Code의 기본 동작은?",
+      "options": [
+        "즉시 세션을 종료한다",
+        "오류 정보를 컨텍스트에 포함하여 AI가 대안 방법을 시도하게 한다",
+        "사용자에게 묻지 않고 자동으로 재시도한다",
+        "오류를 무시하고 다음 단계로 진행한다"
+      ],
+      "answer": 1,
+      "explanation": "도구 실행 오류는 대화 컨텍스트에 포함되어 AI 모델이 오류 원인을 분석하고 대안 방법을 시도하거나 사용자에게 상황을 설명할 수 있게 합니다."
+    }
+  ]
+}

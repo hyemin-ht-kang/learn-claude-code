@@ -1,0 +1,195 @@
+---
+title: "검색 도구"
+description: "Grep과 LS 도구의 동작 방식과 효과적인 검색 전략을 이해합니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "Grep의 3가지 출력 모드를 구분하고 상황에 맞게 선택할 수 있다"
+  - "효율적인 코드베이스 탐색을 위한 Glob→Grep→Read 전략을 적용할 수 있다"
+  - "CLAUDE_CODE_SIMPLE 모드에서 LS가 사용 불가한 이유를 설명할 수 있다"
+estimated_minutes: 20
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 검색 도구 개요
+
+Grep과 LS는 코드베이스를 탐색하는 핵심 도구입니다. 두 도구 모두 파일을 변경하지 않고 읽기만 하므로 **자동 승인** 됩니다. 단, LS는 `CLAUDE_CODE_SIMPLE=1` 모드에서 사용할 수 없습니다.
+
+## Grep 도구
+
+Grep은 ripgrep 기반으로 구현된 강력한 검색 도구입니다. 정규식 패턴으로 파일 내용을 검색합니다.
+
+### 기본 파라미터
+
+```typescript
+{
+  pattern: "useState",          // 검색할 정규식 패턴
+  path: "/src",                 // 검색 디렉토리 (기본: 현재 디렉토리)
+  glob: "**/*.tsx",             // 파일 필터 글로브 패턴
+  type: "ts",                   // 파일 타입 필터 (js, py, rust 등)
+  output_mode: "files_with_matches",  // 출력 모드
+  "-i": true,                   // 대소문자 무시
+  "-n": true,                   // 라인 번호 표시
+  context: 3,                   // 일치 전후 표시할 줄 수
+  head_limit: 50,               // 최대 결과 수
+  multiline: false              // 멀티라인 패턴 허용
+}
+```
+
+### 3가지 출력 모드
+
+| 모드 | 출력 내용 | 사용 시점 |
+|------|----------|----------|
+| `files_with_matches` | 일치하는 파일 경로만 | 어떤 파일에 있는지 파악할 때 |
+| `content` | 일치하는 라인과 컨텍스트 | 실제 코드 내용을 확인할 때 |
+| `count` | 파일별 일치 횟수 | 사용 빈도를 파악할 때 |
+
+```typescript
+// 예시 1: 어떤 파일이 React를 import하는지 파악
+{
+  pattern: "import.*from 'react'",
+  output_mode: "files_with_matches"
+}
+// 출력: src/App.tsx, src/components/Button.tsx, ...
+
+// 예시 2: useState 사용 위치와 코드 확인
+{
+  pattern: "useState",
+  output_mode: "content",
+  context: 2,
+  glob: "**/*.tsx"
+}
+// 출력: 파일명:라인번호: 코드 내용 (앞뒤 2줄 포함)
+
+// 예시 3: TODO 주석 개수 집계
+{
+  pattern: "TODO|FIXME|HACK",
+  output_mode: "count"
+}
+// 출력: src/auth.ts: 3, src/utils.ts: 1, ...
+```
+
+### 정규식 활용 예시
+
+```typescript
+// 함수 정의 찾기
+{ pattern: "function\\s+\\w+" }
+
+// TypeScript 인터페이스 찾기
+{ pattern: "^interface\\s+\\w+" }
+
+// 미사용 변수 패턴 (간단한 예)
+{ pattern: "const\\s+\\w+\\s*=.*(?!\\w)" }
+
+// 멀티라인 패턴 (구조체 찾기)
+{
+  pattern: "struct \\{[\\s\\S]*?field",
+  multiline: true
+}
+```
+
+### 파일 타입 필터
+
+`type` 파라미터는 ripgrep의 내장 파일 타입 정의를 사용합니다. `glob` 보다 더 정확하고 효율적입니다.
+
+| `type` 값 | 포함 확장자 |
+|-----------|-----------|
+| `js` | `.js`, `.jsx`, `.mjs` |
+| `ts` | `.ts`, `.tsx` |
+| `py` | `.py`, `.pyi` |
+| `rust` | `.rs` |
+| `go` | `.go` |
+| `json` | `.json` |
+
+## LS 도구
+
+디렉토리 구조를 탐색하는 도구입니다. Bash의 `ls` 명령과 달리 **구조화된 트리 형식** 으로 결과를 반환합니다.
+
+```typescript
+// LS 사용 예시
+{
+  path: "/src/components",
+  recursive: true
+}
+
+// 출력 예시
+src/components/
+├── Button/
+│   ├── Button.tsx
+│   ├── Button.test.tsx
+│   └── index.ts
+├── Modal/
+│   ├── Modal.tsx
+│   └── index.ts
+└── index.ts
+```
+
+### LS vs Glob 선택 기준
+
+| 상황 | 권장 도구 | 이유 |
+|------|----------|------|
+| 디렉토리 구조 파악 | LS | 계층 구조가 명확하게 보임 |
+| 특정 확장자 파일 탐색 | Glob | 패턴 매칭이 더 정확 |
+| 최신 수정 파일 찾기 | Glob | 수정 시간 순 정렬 지원 |
+| 전체 프로젝트 구조 파악 | LS | 한눈에 구조 파악 가능 |
+
+### SIMPLE 모드에서의 제한
+
+`CLAUDE_CODE_SIMPLE=1` 환경에서 LS는 비활성화됩니다. 이 모드에서는 Bash 도구로 대체할 수 있습니다.
+
+```bash
+# SIMPLE 모드에서 디렉토리 탐색
+Bash: "find /src -type f -name '*.ts' | head -20"
+Bash: "ls -la /src/components/"
+```
+
+## 효율적인 탐색 전략
+
+대규모 코드베이스에서 정보를 찾는 권장 순서입니다.
+
+```
+[1단계] Glob — 관련 파일 후보 목록 수집
+         패턴: "src/**/*.service.ts"
+         → 서비스 파일 목록 파악
+
+         ↓
+
+[2단계] Grep — 특정 내용이 있는 파일 필터링
+         pattern: "class.*Service", output_mode: "files_with_matches"
+         → 실제 서비스 클래스가 있는 파일만 선별
+
+         ↓
+
+[3단계] Grep — 관련 코드 미리 확인
+         pattern: "getUserById", output_mode: "content", context: 5
+         → 함수 구현 일부를 미리 파악
+
+         ↓
+
+[4단계] Read — 필요한 파일만 전체 확인
+         file_path: "/src/user/user.service.ts"
+         → 전체 내용 상세 검토
+```
+
+이 전략을 따르면 불필요한 Read 호출을 최소화하고 컨텍스트 윈도우를 효율적으로 사용할 수 있습니다.
+
+## 실전 검색 패턴 모음
+
+```typescript
+// 1. API 엔드포인트 목록 파악
+{ pattern: "@(Get|Post|Put|Delete|Patch)\\(", type: "ts", output_mode: "content" }
+
+// 2. 환경 변수 사용 위치 찾기
+{ pattern: "process\\.env\\.\\w+", output_mode: "files_with_matches" }
+
+// 3. TODO/FIXME 목록 수집
+{ pattern: "TODO|FIXME|HACK|XXX", output_mode: "content", "-n": true }
+
+// 4. 특정 패키지 import 위치 파악
+{ pattern: "from ['\"]lodash", output_mode: "files_with_matches" }
+
+// 5. 긴 함수 탐지 (50줄 이상 함수의 시작 찾기)
+{ pattern: "^(export\\s+)?(async\\s+)?function\\s+\\w+", type: "ts" }
+```

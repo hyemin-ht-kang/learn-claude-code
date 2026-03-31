@@ -1,0 +1,218 @@
+---
+title: "알림과 다이얼로그"
+description: "권한 확인 다이얼로그, 진행 상태 표시, 알림 훅의 동작 방식을 이해합니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "권한 확인 다이얼로그의 세 가지 선택지와 동작을 설명할 수 있다"
+  - "tool_progress 이벤트로 장시간 작업의 진행 상태를 표시하는 방법을 안다"
+  - "PermissionRequest 훅으로 승인/거부를 프로그래매틱하게 처리하는 방법을 이해한다"
+estimated_minutes: 20
+references:
+  - title: "Claude Code 훅 레퍼런스"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/hooks"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Claude Code는 중요한 작업 전에 사용자에게 알리고 확인을 요청합니다. 이 섹션에서는 **권한 확인 다이얼로그** , **진행 상태 표시** , **알림 훅** 의 동작 방식을 살펴봅니다.
+
+## 권한 확인 다이얼로그
+
+권한 모드가 Default 또는 AcceptEdits일 때, 허용되지 않은 도구 호출에 대해 확인 다이얼로그가 표시됩니다.
+
+```
+┌─────────────────────────────────────────────────┐
+│  도구 실행 허용하시겠습니까?                       │
+│                                                  │
+│  도구: Bash                                      │
+│  명령어: npm run build                           │
+│                                                  │
+│  [y] 예   [n] 아니오   [a] 항상 허용             │
+└─────────────────────────────────────────────────┘
+```
+
+### 세 가지 선택지
+
+| 선택 | 키 | 동작 |
+|------|-----|------|
+| **예** | `y` / `Enter` | 이번 한 번만 허용 |
+| **아니오** | `n` / `Esc` | 거부, Claude에게 오류 반환 |
+| **항상 허용** | `a` | 이 패턴에 대한 규칙 영구 추가 |
+
+"항상 허용"을 선택하면 해당 명령어 패턴이 `localSettings`에 `allow` 규칙으로 자동 추가됩니다. 다음부터 같은 패턴의 명령어는 확인 없이 자동 실행됩니다.
+
+```json
+// 자동 추가된 규칙 예시
+// .claude/settings.local.json
+{
+  "permissions": {
+    "allow": ["Bash(npm run build)"]
+  }
+}
+```
+
+<Aside type="tip">
+처음에는 Default 모드로 시작하고, "항상 허용"을 통해 자주 사용하는 명령어를 점진적으로 허용 목록에 추가하는 방식이 효율적입니다.
+</Aside>
+
+## 진행 상태 표시
+
+장시간 실행되는 도구(파일 빌드, 테스트 실행 등)는 `tool_progress` 이벤트로 상태 업데이트를 제공합니다.
+
+### 기본 스피너
+
+```
+⠋ 파일 컴파일 중...
+```
+
+도구 실행이 시작되면 기본 스피너가 표시됩니다.
+
+### 상세 진행 메시지
+
+도구가 `tool_progress` 이벤트를 발생시키면 스피너 옆에 구체적인 상태 메시지가 표시됩니다.
+
+```
+⠸ 컴파일 중... (47/128 파일)
+⠼ 컴파일 중... (89/128 파일)
+⠴ 컴파일 중... (128/128 파일)
+✓ 컴파일 완료 (2.3초)
+```
+
+### 도구별 진행 표시
+
+여러 도구가 동시에 실행될 때는 각 도구의 상태가 개별적으로 표시됩니다.
+
+```
+⠋ Read: src/api/auth.ts
+⠙ Bash: npm run lint
+✓ Read: 완료
+⠸ Bash: 진행 중...
+```
+
+## Notification 훅
+
+특정 이벤트 발생 시 외부 알림을 보내도록 훅을 설정할 수 있습니다.
+
+```json
+// ~/.claude/settings.json
+{
+  "hooks": {
+    "Notification": [
+      {
+        "type": "command",
+        "command": "~/.claude/hooks/notify.sh"
+      }
+    ]
+  }
+}
+```
+
+### 알림 유형
+
+| 유형 | 트리거 시점 |
+|------|-----------|
+| `permission_prompt` | 권한 확인 다이얼로그 표시 시 |
+| `idle_alert` | Claude가 오랜 시간 응답을 기다릴 때 |
+| `auth_success` | 인증 완료 시 |
+
+### 알림 훅 예시
+
+```bash
+#!/bin/bash
+# ~/.claude/hooks/notify.sh
+
+NOTIFICATION_TYPE="${NOTIFICATION_TYPE:-unknown}"
+
+case "$NOTIFICATION_TYPE" in
+  permission_prompt)
+    # macOS 알림
+    osascript -e "display notification \"권한 확인이 필요합니다\" with title \"Claude Code\""
+    ;;
+  idle_alert)
+    # 터미널 벨 소리
+    echo -e "\a"
+    ;;
+esac
+```
+
+장시간 실행 중인 작업에서 Claude가 사용자 응답을 기다리고 있을 때 알림을 받을 수 있어 유용합니다.
+
+## PermissionRequest 훅
+
+가장 강력한 훅 유형입니다. 권한 확인 다이얼로그를 UI에 표시하기 **전에** 실행되어 프로그래매틱하게 승인 또는 거부를 결정할 수 있습니다.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "~/.claude/hooks/permission-check.sh",
+        "hookSpecificOutput": true
+      }
+    ]
+  }
+}
+```
+
+### hookSpecificOutput.decision
+
+훅의 stdout으로 JSON을 출력하여 결정을 전달합니다.
+
+```bash
+#!/bin/bash
+# ~/.claude/hooks/permission-check.sh
+
+TOOL_NAME="$TOOL_NAME"
+TOOL_INPUT="$TOOL_INPUT"
+
+# rm -rf 명령어는 자동 거부
+if echo "$TOOL_INPUT" | grep -q "rm -rf"; then
+  echo '{"decision": "deny", "reason": "rm -rf 명령어는 차단됩니다"}'
+  exit 0
+fi
+
+# git 명령어는 자동 승인
+if echo "$TOOL_INPUT" | grep -q "^git "; then
+  echo '{"decision": "approve"}'
+  exit 0
+fi
+
+# 나머지는 사용자에게 물어보기 (기본 동작)
+exit 0
+```
+
+| decision 값 | 동작 |
+|------------|------|
+| `"approve"` | 자동 승인, 다이얼로그 표시 안 함 |
+| `"deny"` | 자동 거부, 다이얼로그 표시 안 함 |
+| (없음/오류) | 기본 동작 (다이얼로그 표시) |
+
+<Aside type="caution">
+PermissionRequest 훅은 강력한 도구입니다. 잘못 구현하면 위험한 작업이 자동 승인되거나 모든 작업이 차단될 수 있습니다. 점진적으로 테스트하면서 규칙을 추가하세요.
+</Aside>
+
+## 알림 시스템 요약
+
+```
+도구 호출 발생
+      │
+      ├─ PermissionRequest 훅 실행
+      │   ├─ approve → 바로 실행
+      │   ├─ deny → 거부 반환
+      │   └─ (없음) → 다음 단계
+      │
+      ├─ 권한 규칙 검사
+      │   ├─ allow 규칙 → 바로 실행
+      │   ├─ deny 규칙 → 거부 반환
+      │   └─ (없음) → 다음 단계
+      │
+      ├─ 권한 모드 검사
+      │   ├─ BypassPermissions/DontAsk → 바로 실행
+      │   └─ Default/AcceptEdits → 다이얼로그 표시
+      │
+      ├─ Notification 훅 실행 (permission_prompt)
+      │
+      └─ 사용자 응답 대기
+```

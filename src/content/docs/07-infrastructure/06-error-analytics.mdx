@@ -1,0 +1,142 @@
+---
+title: "에러 핸들링과 분석"
+description: "Claude Code의 에러 처리 전략, PostToolUseFailure 훅, 토큰 사용량과 비용 분석 메커니즘을 학습합니다."
+sidebar:
+  order: 6
+learning_objectives:
+  - "도구 실행 실패 시 tool_result에 에러가 포함되는 방식을 설명할 수 있다"
+  - "result 메시지의 구조(success/error, 비용, 기간)를 파악할 수 있다"
+  - "get_context_usage로 컨텍스트 윈도우 사용량을 분석하는 방법을 안다"
+estimated_minutes: 25
+references:
+  - title: "Claude Code SDK"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/sdk"
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## 에러 처리 전략
+
+Claude Code에서 도구 실행이 실패하면, 오류 내용이 **`tool_result` 메시지에 포함**되어 Claude에게 전달됩니다. Claude는 이 에러 정보를 바탕으로 재시도, 대안 시도, 또는 사용자에게 설명을 제공합니다.
+
+```jsonl
+// 도구 실행 실패 시 tool_result 메시지 예시
+{
+  "type": "tool_result",
+  "tool_use_id": "toolu_abc123",
+  "is_error": true,
+  "content": "Permission denied: /etc/passwd"
+}
+```
+
+이 메커니즘 덕분에 Claude는 오류를 **대화 컨텍스트의 일부**로 처리할 수 있으며, 단순히 실패로 끝내지 않고 적응적으로 대응합니다.
+
+## PostToolUseFailure 훅
+
+도구 실행 실패 시 자동으로 대응하는 훅을 설정할 수 있습니다.
+
+```json
+{
+  "hooks": {
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "logger -t claude-code 'Bash 도구 실패: $CLAUDE_TOOL_INPUT'"
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://monitoring.example.com/claude-errors",
+            "method": "POST"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`PostToolUseFailure`는 **차단이 불가능**합니다. 실패 이후 로깅, 알림, 모니터링 등의 부가 작업에 활용합니다.
+
+## result 메시지 구조
+
+세션 종료 시 또는 SDK 사용 시 **`result` 메시지**가 생성됩니다. 이 메시지는 전체 실행 요약을 담고 있습니다.
+
+```jsonl
+{
+  "type": "result",
+  "subtype": "success",
+  "cost_usd": 0.0842,
+  "duration_ms": 15420,
+  "duration_api_ms": 12300,
+  "is_error": false,
+  "num_turns": 7,
+  "usage": {
+    "input_tokens": 12450,
+    "output_tokens": 3280,
+    "cache_read_input_tokens": 8900,
+    "cache_creation_input_tokens": 1200
+  }
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `subtype` | `success` 또는 `error` |
+| `cost_usd` | 세션 총 비용 (USD) |
+| `duration_ms` | 전체 실행 시간 (밀리초) |
+| `duration_api_ms` | API 호출 시간 (밀리초) |
+| `num_turns` | 대화 턴 수 |
+| `usage.input_tokens` | 입력 토큰 수 |
+| `usage.output_tokens` | 출력 토큰 수 |
+| `usage.cache_read_input_tokens` | 캐시에서 읽은 토큰 수 |
+
+## 컨텍스트 윈도우 분석
+
+`get_context_usage` 제어 요청으로 현재 컨텍스트 윈도우 사용량을 세분화하여 확인할 수 있습니다.
+
+```typescript
+// SDK를 통한 컨텍스트 사용량 조회
+const contextUsage = await sendControlRequest({
+  type: 'get_context_usage'
+});
+
+// 응답 예시
+{
+  "total_tokens": 200000,
+  "used_tokens": 45230,
+  "available_tokens": 154770,
+  "breakdown": {
+    "system_prompt": 8500,
+    "conversation_history": 28000,
+    "tool_results": 6200,
+    "pending_output": 2530
+  }
+}
+```
+
+컨텍스트 윈도우가 80% 이상 채워지면 자동 압축(compact)이 트리거되어 오래된 대화 내용이 요약으로 대체됩니다.
+
+## 분석 수집 활용
+
+비용과 성능 데이터를 활용한 최적화 전략:
+
+| 분석 지표 | 활용 방법 |
+|-----------|-----------|
+| `cost_usd` | 세션별 비용 추적, 예산 관리 |
+| `duration_ms` | 응답 시간 모니터링, SLA 관리 |
+| `cache_read_input_tokens` | 캐시 효율성 측정 |
+| `num_turns` | 대화 복잡도 분석 |
+
+---
+
+import Quiz from '../../../components/learning/Quiz';
+
+<Quiz client:load section="07-infrastructure" />

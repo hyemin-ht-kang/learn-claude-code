@@ -1,0 +1,116 @@
+---
+title: "플러그인과 마이그레이션"
+description: "Claude Code의 플러그인 아키텍처, MCP 서버 기반 확장, 설정 마이그레이션 메커니즘을 학습합니다."
+sidebar:
+  order: 5
+learning_objectives:
+  - "MCP 서버 기반 플러그인이 외부 도구와 연결되는 방식을 설명할 수 있다"
+  - "설정 파일 스키마 변경 시 자동 마이그레이션이 동작하는 원리를 이해한다"
+  - "InstructionsLoaded 훅의 특성과 차단 불가 이유를 설명할 수 있다"
+estimated_minutes: 20
+references:
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+  - title: "MCP 문서"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/mcp"
+---
+
+## 플러그인 아키텍처
+
+Claude Code의 플러그인 시스템은 **MCP(Model Context Protocol) 서버**를 기반으로 합니다. 외부 도구, 데이터베이스, API 서비스를 플러그인으로 연결하여 Claude Code의 기능을 무한히 확장할 수 있습니다.
+
+```
+Claude Code
+    │
+    ├── 내장 도구 (Bash, Read, Write, Edit...)
+    │
+    └── MCP 플러그인
+          ├── 파일시스템 서버
+          ├── 데이터베이스 커넥터
+          ├── GitHub 통합
+          └── 커스텀 API 서버
+```
+
+플러그인은 표준 MCP 프로토콜을 구현하므로, 어떤 언어로도 개발할 수 있습니다. 연결된 플러그인의 도구는 `mcp__<서버명>__<도구명>` 형식으로 Claude에게 노출됩니다.
+
+## MCP 서버 기반 플러그인
+
+```json
+// .claude/settings.local.json
+{
+  "mcpServers": {
+    "my-database": {
+      "command": "node",
+      "args": ["./mcp-servers/database/index.js"],
+      "env": {
+        "DB_URL": "${DATABASE_URL}"
+      }
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.github.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+플러그인 서버가 연결되면 해당 서버가 제공하는 도구들이 자동으로 Claude의 도구 목록에 추가됩니다.
+
+## 설정 마이그레이션
+
+Claude Code 버전 업그레이드 시 설정 파일 **스키마가 변경**될 수 있습니다. 이 경우 Claude Code는 시작 시 자동으로 기존 설정을 새 형식으로 마이그레이션합니다.
+
+| 마이그레이션 단계 | 설명 |
+|------------------|------|
+| 스키마 버전 감지 | 현재 설정 파일의 스키마 버전 확인 |
+| 변환 규칙 적용 | 구 형식 필드를 새 형식으로 자동 변환 |
+| 백업 생성 | 원본 파일을 `.backup` 확장자로 보존 |
+| 검증 | 변환된 설정의 유효성 검사 |
+
+```bash
+# 마이그레이션 후 생성되는 백업 파일
+.claude/settings.json.backup.20250101
+~/.claude/settings.json.backup.20250101
+```
+
+자동 마이그레이션이 실패하는 경우, 오류 메시지와 함께 수동 마이그레이션 가이드가 제공됩니다.
+
+## InstructionsLoaded 훅
+
+`InstructionsLoaded` 이벤트는 **CLAUDE.md 또는 규칙 파일이 로드될 때** 발생합니다.
+
+```json
+{
+  "hooks": {
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '지시 파일이 로드되었습니다: $CLAUDE_FILE_PATH'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**주의:** `InstructionsLoaded` 훅은 **차단(block)이 불가능**합니다. exit 코드 2를 반환해도 CLAUDE.md 로딩을 막을 수 없습니다. 이는 설계상의 결정으로, 지시 파일 로딩은 시스템의 핵심 동작이므로 훅이 이를 방해할 수 없게 되어 있습니다. 관찰(observe)과 로깅 목적으로만 사용할 수 있습니다.
+
+## 플러그인 개발 가이드라인
+
+플러그인을 직접 개발할 때 따라야 할 원칙:
+
+| 원칙 | 설명 |
+|------|------|
+| **단일 책임** | 플러그인 하나는 하나의 도메인만 담당 |
+| **멱등성** | 같은 요청을 여러 번 실행해도 동일한 결과 |
+| **에러 처리** | 명확한 에러 메시지와 적절한 오류 코드 반환 |
+| **환경 변수** | 비밀 키는 반드시 환경 변수로 관리 |
+| **문서화** | 각 도구의 입력/출력 스키마를 명확히 정의 |
+
+MCP 플러그인 생태계는 지속적으로 성장하고 있으며, `modelcontextprotocol.io`에서 커뮤니티 플러그인을 찾을 수 있습니다.

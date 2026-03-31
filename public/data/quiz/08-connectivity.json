@@ -1,0 +1,116 @@
+{
+  "id": "08-connectivity",
+  "title": "연결성 및 통합",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "MCP(Model Context Protocol)의 주요 목적은?",
+      "options": [
+        "Claude 모델의 성능을 향상시킨다",
+        "외부 도구와 데이터 소스를 표준화된 방식으로 AI에 연결한다",
+        "네트워크 보안을 강화한다",
+        "API 비용을 절감한다"
+      ],
+      "answer": 1,
+      "explanation": "MCP는 파일 시스템, 데이터베이스, 외부 API 등 다양한 도구와 데이터 소스를 표준화된 프로토콜로 AI 모델에 연결하는 개방형 표준입니다."
+    },
+    {
+      "id": "q2",
+      "question": "MCP가 지원하는 3가지 전송 타입은?",
+      "options": [
+        "TCP, UDP, WebSocket",
+        "stdio, HTTP, SSE",
+        "REST, GraphQL, gRPC",
+        "JSON, XML, Protocol Buffers"
+      ],
+      "answer": 1,
+      "explanation": "MCP는 stdio(표준 입출력), HTTP(원격 서버), SSE(Server-Sent Events, 스트리밍)의 3가지 전송 타입을 지원합니다."
+    },
+    {
+      "id": "q3",
+      "question": "MCP 서버의 스코프(scope) 옵션이 아닌 것은?",
+      "options": ["project", "user", "local", "global"],
+      "answer": 3,
+      "explanation": "MCP 서버 스코프는 project(프로젝트 공유), user(사용자 전체), local(로컬 전용)의 3가지입니다. 'global'은 MCP 스코프 옵션이 아닙니다."
+    },
+    {
+      "id": "q4",
+      "question": "MCP에서 OAuth 인증의 역할은?",
+      "options": [
+        "Claude Code 자체 인증",
+        "원격 MCP 서버에 안전하게 인증하기 위한 OAuth 2.0 흐름을 지원",
+        "파일 시스템 접근 권한 부여",
+        "API 키 생성"
+      ],
+      "answer": 1,
+      "explanation": "MCP는 원격 HTTP 서버에 연결할 때 OAuth 2.0 인증 흐름을 지원하여 안전하게 외부 서비스에 인증하고 토큰을 관리합니다."
+    },
+    {
+      "id": "q5",
+      "question": "Claude Code가 지원하는 API 프로바이더가 아닌 것은?",
+      "options": ["Anthropic 직접 API", "Amazon Bedrock", "Google Vertex AI", "Azure OpenAI"],
+      "answer": 3,
+      "explanation": "Claude Code는 Anthropic 직접 API, Amazon Bedrock, Google Vertex AI를 통해 Claude 모델에 접근할 수 있습니다. Azure OpenAI는 OpenAI 모델을 위한 서비스로 지원하지 않습니다."
+    },
+    {
+      "id": "q6",
+      "question": "Git 통합에서 Claude Code가 자동으로 수행하지 않는 작업은?",
+      "options": [
+        "변경된 파일 확인 (git status)",
+        "커밋 히스토리 조회",
+        "자동 푸시 (git push)",
+        "diff 확인"
+      ],
+      "answer": 2,
+      "explanation": "Claude Code의 Git 안전 프로토콜에 따라 자동 푸시는 수행하지 않습니다. git push는 원격 저장소에 영향을 주므로 항상 사용자 확인을 요구합니다."
+    },
+    {
+      "id": "q7",
+      "question": "Git 안전 프로토콜에서 강제 푸시(force push)에 대한 정책은?",
+      "options": [
+        "항상 허용된다",
+        "main/master 브랜치에 대한 강제 푸시는 경고하거나 차단한다",
+        "모든 강제 푸시가 차단된다",
+        "사용자 설정에 따라 결정된다"
+      ],
+      "answer": 1,
+      "explanation": "Git 안전 프로토콜에 따라 main/master 등 보호 브랜치에 대한 강제 푸시는 경고를 표시하거나 차단합니다. 실수로 인한 히스토리 손실을 방지합니다."
+    },
+    {
+      "id": "q8",
+      "question": "브릿지 시스템(Bridge System)의 역할은?",
+      "options": [
+        "두 개의 Claude Code 인스턴스를 연결한다",
+        "Claude Code와 IDE, 외부 도구 사이의 통신 인터페이스를 제공한다",
+        "로컬과 클라우드 파일을 동기화한다",
+        "여러 API 프로바이더를 자동 전환한다"
+      ],
+      "answer": 1,
+      "explanation": "브릿지 시스템은 Claude Code와 VS Code, JetBrains 등 IDE나 외부 도구 사이의 통신을 중개하는 인터페이스 레이어입니다."
+    },
+    {
+      "id": "q9",
+      "question": "원격 모드(Remote Mode)에서 Claude Code는 어떻게 동작하나요?",
+      "options": [
+        "완전히 클라우드에서 실행된다",
+        "원격 서버의 파일 시스템과 환경에서 작업하도록 구성된다",
+        "인터넷 없이 동작한다",
+        "읽기 전용 모드로 전환된다"
+      ],
+      "answer": 1,
+      "explanation": "원격 모드는 SSH나 다른 프로토콜을 통해 원격 서버에 연결하여 해당 서버의 파일 시스템과 실행 환경에서 작업할 수 있게 합니다."
+    },
+    {
+      "id": "q10",
+      "question": "크론 스케줄링(Cron Scheduling)을 Claude Code에서 활용하는 방법은?",
+      "options": [
+        "Claude Code 자체에 내장된 크론 엔진을 사용한다",
+        "시스템 크론과 연동하여 정기적인 Claude Code 작업을 자동화한다",
+        "클라우드 스케줄러 서비스만 사용할 수 있다",
+        "크론 스케줄링은 지원하지 않는다"
+      ],
+      "answer": 1,
+      "explanation": "Claude Code는 시스템 크론(crontab) 또는 스킬 시스템의 스케줄 기능과 연동하여 정기적인 자동화 작업(코드 분석, 리포트 생성 등)을 예약할 수 있습니다."
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+---
+title: "세션 관리"
+description: "Claude Code의 JSON 트랜스크립트 저장 방식, 세션 재개, SDK 세션 관리 API를 학습합니다."
+sidebar:
+  order: 4
+learning_objectives:
+  - "세션 트랜스크립트의 저장 형식과 위치를 설명할 수 있다"
+  - "--resume 옵션으로 이전 대화를 재개하는 방법을 안다"
+  - "SDK의 세션 관리 API(listSessions, forkSession 등)를 활용할 수 있다"
+estimated_minutes: 20
+references:
+  - title: "Claude Code SDK"
+    url: "https://docs.anthropic.com/ko/docs/claude-code/sdk"
+  - title: "Learn Claude Code"
+    url: "https://markdown.engineering/learn-claude-code"
+---
+
+## JSON 트랜스크립트
+
+Claude Code는 모든 대화를 **JSONL(JSON Lines) 형식**으로 `~/.claude/` 디렉토리에 저장합니다. 각 줄이 하나의 JSON 객체이며, 메시지 타입과 내용을 포함합니다.
+
+```
+~/.claude/
+  projects/
+    <project-hash>/
+      <session-id>.jsonl    # 세션 트랜스크립트
+```
+
+```jsonl
+{"type":"user","message":{"role":"user","content":"안녕하세요"},"uuid":"abc-123"}
+{"type":"assistant","message":{"role":"assistant","content":"안녕하세요!"},"uuid":"def-456"}
+{"type":"tool_use","tool":"Bash","input":{"command":"ls"},"uuid":"ghi-789"}
+```
+
+## 세션 ID
+
+각 대화는 **고유한 세션 ID(UUID)**로 식별됩니다. 세션 ID는 트랜스크립트 파일명이자 대화 재개 시 사용하는 식별자입니다.
+
+```bash
+# 현재 세션 ID 확인 (세션 시작 시 출력됨)
+# Session ID: 550e8400-e29b-41d4-a716-446655440000
+```
+
+## 대화 재개
+
+이전 대화를 재개하는 방법은 두 가지입니다.
+
+```bash
+# 방법 1: 세션 ID로 직접 재개
+claude --resume 550e8400-e29b-41d4-a716-446655440000
+
+# 방법 2: 대화형 선택 (최근 세션 목록에서 선택)
+claude --resume
+```
+
+재개 시 동작:
+
+| 항목 | 동작 |
+|------|------|
+| 히스토리 로드 | 이전 전체 대화 내용 복원 |
+| 메모리 재탐색 | CLAUDE.md 및 컨텍스트 파일 재로드 |
+| 권한 모드 리셋 | 이전 세션의 임시 권한 승인 초기화 |
+| 작업 디렉토리 | 세션 시작 시 디렉토리로 복원 |
+
+## SDK 세션 관리 API
+
+TypeScript SDK를 통해 프로그래매틱으로 세션을 관리할 수 있습니다.
+
+```typescript
+import { listSessions, getSessionMessages, forkSession, renameSession, tagSession } from '@anthropic-ai/claude-code';
+
+// 모든 세션 목록 조회
+const sessions = await listSessions();
+console.log(sessions);
+// [{ id: '550e8400-...', createdAt: '2025-01-01', tags: ['production'] }]
+
+// 특정 세션의 메시지 조회
+const messages = await getSessionMessages('550e8400-e29b-41d4-a716-446655440000');
+
+// 세션 이름 변경
+await renameSession('550e8400-...', '프로덕션 배포 작업');
+
+// 세션에 태그 추가
+await tagSession('550e8400-...', ['production', 'deploy', '2025-01']);
+```
+
+## 세션 포크
+
+`forkSession()`은 기존 대화를 **분기**하여 새 UUID로 독립적인 세션을 생성합니다. 실험적인 접근 방식을 시도하거나, 동일한 컨텍스트에서 여러 방향으로 탐색할 때 유용합니다.
+
+```typescript
+// 특정 메시지 이후 지점에서 세션 포크
+const newSessionId = await forkSession(
+  '550e8400-e29b-41d4-a716-446655440000',
+  { afterMessageId: 'ghi-789' }  // 이 메시지 이후부터 새 세션
+);
+
+// 원본 세션은 그대로 유지
+// 새 세션은 newSessionId로 독립 관리
+```
+
+## 세션 태깅
+
+태그 시스템으로 세션을 체계적으로 **조직화**할 수 있습니다.
+
+```typescript
+// 태그로 세션 필터링
+const productionSessions = await listSessions({ tags: ['production'] });
+
+// 여러 태그 동시 추가
+await tagSession(sessionId, ['feature/auth', 'sprint-42', 'reviewed']);
+```
+
+세션 관리 기능을 활용하면 복잡한 장기 프로젝트에서도 작업 맥락을 잃지 않고 효율적으로 대화를 이어갈 수 있습니다.
