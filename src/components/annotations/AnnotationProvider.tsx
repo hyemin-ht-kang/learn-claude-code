@@ -125,9 +125,12 @@ export default function AnnotationProvider({ children }: { children: React.React
         const { anchor, selectedText } = serializeSelection(popover.range);
         const breadcrumb = resolveBreadcrumb(popover.range.startContainer);
 
+        const pageTitle = resolvePageTitle();
+
         const annotation: Annotation = {
           id: crypto.randomUUID(),
           pageUrl,
+          pageTitle,
           selectedText,
           memo,
           anchor,
@@ -224,6 +227,18 @@ export default function AnnotationProvider({ children }: { children: React.React
       </div>
     </AnnotationContext.Provider>
   );
+}
+
+function resolvePageTitle(): string {
+  const activeLink = document.querySelector('a[aria-current="page"]');
+  const pageLabel = activeLink?.querySelector('span')?.textContent?.trim() || '';
+
+  // Walk up to the parent <details> group to get the section name
+  const group = activeLink?.closest('ul')?.closest('li')?.querySelector(':scope > details > summary .group-label .large');
+  const sectionLabel = group?.textContent?.trim() || '';
+
+  if (sectionLabel && pageLabel) return `${sectionLabel} › ${pageLabel}`;
+  return pageLabel || document.querySelector('h1')?.textContent?.trim() || '';
 }
 
 function getAllAnnotationsIds(): string[] {

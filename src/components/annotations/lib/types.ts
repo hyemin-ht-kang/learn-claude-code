@@ -10,6 +10,7 @@ export interface AnnotationAnchor {
 export interface Annotation {
   id: string;
   pageUrl: string;
+  pageTitle?: string;
   selectedText: string;
   memo: string;
   anchor: AnnotationAnchor;

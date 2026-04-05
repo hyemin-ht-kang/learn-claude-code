@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import type { Annotation } from './lib/types';
+import { useState, useRef, useEffect } from 'react';
+import { HIGHLIGHT_COLORS, type Annotation } from './lib/types';
 import { exportToJson, exportToMarkdown, importFromJson } from './lib/export-manager';
 import { getAllAnnotations } from './lib/storage-manager';
 
@@ -26,9 +26,16 @@ export default function AnnotationPanel({
 }: AnnotationPanelProps) {
   const [tab, setTab] = useState<Tab>('current');
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [collapsedPages, setCollapsedPages] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allAnnotations = tab === 'all' ? getAllAnnotations() : [];
+  // Toggle a class on <html> so CSS can hide the right sidebar behind the panel
+  useEffect(() => {
+    document.documentElement.classList.toggle('annotation-panel-open', isOpen);
+    return () => document.documentElement.classList.remove('annotation-panel-open');
+  }, [isOpen]);
+
+  const allAnnotations = typeof window !== 'undefined' ? getAllAnnotations() : [];
   const displayAnnotations = tab === 'current' ? currentPageAnnotations : allAnnotations;
 
   // Group by page for "all" tab
@@ -83,10 +90,10 @@ export default function AnnotationPanel({
 
   const panelStyle: React.CSSProperties = {
     position: 'fixed',
-    top: 0,
+    top: 'var(--sl-nav-height)',
     right: 0,
     width: '22rem',
-    height: '100vh',
+    height: 'calc(100vh - var(--sl-nav-height))',
     background: 'var(--sl-color-gray-7)',
     borderLeft: '1px solid var(--sl-color-gray-5)',
     boxShadow: '-4px 0 24px rgba(0, 0, 0, 0.2)',
@@ -100,34 +107,58 @@ export default function AnnotationPanel({
   return (
     <>
       <div style={panelStyle}>
-        {/* Header */}
-        <div
-          style={{
-            padding: '1rem',
-            borderBottom: '1px solid var(--sl-color-gray-5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span style={{ fontWeight: 600, color: 'var(--sl-color-white)', fontSize: '0.875rem' }}>
-            주석
-          </span>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        {/* Toolbar: tabs + action icons */}
+        <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--sl-color-gray-5)', padding: '0.375rem 0.5rem', gap: '0.375rem' }}>
+          <button
+            onClick={() => setTab('current')}
+            style={{
+              padding: '0.25rem 0.625rem',
+              fontSize: '0.6875rem',
+              borderRadius: '0.25rem',
+              border: tab === 'current' ? '1px solid var(--sl-color-accent)' : '1px solid transparent',
+              background: tab === 'current' ? 'color-mix(in srgb, var(--sl-color-accent) 15%, transparent)' : 'transparent',
+              color: tab === 'current' ? 'var(--sl-color-accent)' : 'var(--sl-color-gray-3)',
+              cursor: 'pointer',
+            }}
+          >
+            이 페이지 ({currentPageAnnotations.length})
+          </button>
+          <button
+            onClick={() => setTab('all')}
+            style={{
+              padding: '0.25rem 0.625rem',
+              fontSize: '0.6875rem',
+              borderRadius: '0.25rem',
+              border: tab === 'all' ? '1px solid var(--sl-color-accent)' : '1px solid transparent',
+              background: tab === 'all' ? 'color-mix(in srgb, var(--sl-color-accent) 15%, transparent)' : 'transparent',
+              color: tab === 'all' ? 'var(--sl-color-accent)' : 'var(--sl-color-gray-3)',
+              cursor: 'pointer',
+            }}
+          >
+            전체 페이지 ({allAnnotations.length})
+          </button>
+
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.125rem' }}>
+            {/* Export */}
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowExportMenu(!showExportMenu)}
+                title="내보내기"
                 style={{
-                  padding: '0.25rem 0.5rem',
-                  fontSize: '0.6875rem',
-                  background: 'var(--sl-color-gray-6)',
+                  background: 'transparent',
+                  border: 'none',
                   color: 'var(--sl-color-gray-3)',
-                  border: '1px solid var(--sl-color-gray-5)',
-                  borderRadius: '0.25rem',
                   cursor: 'pointer',
+                  padding: '0.25rem',
+                  display: 'flex',
+                  borderRadius: '0.25rem',
                 }}
               >
-                내보내기
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
               </button>
               {showExportMenu && (
                 <div
@@ -164,7 +195,7 @@ export default function AnnotationPanel({
                       (e.currentTarget as HTMLElement).style.background = 'transparent';
                     }}
                   >
-                    JSON (전체)
+                    JSON
                   </button>
                   <button
                     onClick={() => handleExport('markdown')}
@@ -187,24 +218,31 @@ export default function AnnotationPanel({
                       (e.currentTarget as HTMLElement).style.background = 'transparent';
                     }}
                   >
-                    Markdown (읽기용)
+                    Markdown
                   </button>
                 </div>
               )}
             </div>
+
+            {/* Import */}
             <button
               onClick={handleImportClick}
+              title="가져오기"
               style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '0.6875rem',
-                background: 'var(--sl-color-gray-6)',
+                background: 'transparent',
+                border: 'none',
                 color: 'var(--sl-color-gray-3)',
-                border: '1px solid var(--sl-color-gray-5)',
-                borderRadius: '0.25rem',
                 cursor: 'pointer',
+                padding: '0.25rem',
+                display: 'flex',
+                borderRadius: '0.25rem',
               }}
             >
-              가져오기
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
             </button>
             <input
               ref={fileInputRef}
@@ -213,52 +251,27 @@ export default function AnnotationPanel({
               style={{ display: 'none' }}
               onChange={handleFileChange}
             />
+
+            {/* Close */}
             <button
               onClick={onClose}
+              title="닫기"
               style={{
                 background: 'transparent',
                 border: 'none',
                 color: 'var(--sl-color-gray-3)',
                 cursor: 'pointer',
-                fontSize: '1.25rem',
-                padding: '0 0.25rem',
+                padding: '0.25rem',
+                display: 'flex',
+                borderRadius: '0.25rem',
               }}
             >
-              ×
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
             </button>
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--sl-color-gray-6)', padding: '0.5rem 1rem', gap: '0.5rem' }}>
-          <button
-            onClick={() => setTab('current')}
-            style={{
-              padding: '0.25rem 0.625rem',
-              fontSize: '0.6875rem',
-              borderRadius: '0.25rem',
-              border: tab === 'current' ? '1px solid var(--sl-color-accent)' : '1px solid transparent',
-              background: tab === 'current' ? 'color-mix(in srgb, var(--sl-color-accent) 15%, transparent)' : 'transparent',
-              color: tab === 'current' ? 'var(--sl-color-accent)' : 'var(--sl-color-gray-3)',
-              cursor: 'pointer',
-            }}
-          >
-            이 페이지 ({currentPageAnnotations.length})
-          </button>
-          <button
-            onClick={() => setTab('all')}
-            style={{
-              padding: '0.25rem 0.625rem',
-              fontSize: '0.6875rem',
-              borderRadius: '0.25rem',
-              border: tab === 'all' ? '1px solid var(--sl-color-accent)' : '1px solid transparent',
-              background: tab === 'all' ? 'color-mix(in srgb, var(--sl-color-accent) 15%, transparent)' : 'transparent',
-              color: tab === 'all' ? 'var(--sl-color-accent)' : 'var(--sl-color-gray-3)',
-              cursor: 'pointer',
-            }}
-          >
-            전체 페이지
-          </button>
         </div>
 
         {/* Annotation list */}
@@ -273,6 +286,14 @@ export default function AnnotationPanel({
             <div key={pageUrl}>
               {tab === 'all' && (
                 <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCollapsedPages((prev) => {
+                      const next = new Set(prev);
+                      next.has(pageUrl) ? next.delete(pageUrl) : next.add(pageUrl);
+                      return next;
+                    });
+                  }}
                   style={{
                     padding: '0.5rem 0.75rem',
                     fontSize: '0.6875rem',
@@ -280,12 +301,25 @@ export default function AnnotationPanel({
                     fontFamily: 'var(--sl-font-mono)',
                     borderBottom: '1px solid var(--sl-color-gray-6)',
                     marginTop: '0.5rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    userSelect: 'none',
                   }}
                 >
-                  {pageUrl}
+                  <span style={{
+                    display: 'inline-block',
+                    transition: 'transform 0.15s',
+                    transform: collapsedPages.has(pageUrl) ? 'rotate(-90deg)' : 'rotate(0deg)',
+                    fontSize: '0.5rem',
+                  }}>
+                    ▼
+                  </span>
+                  {annotations[0]?.pageTitle || pageUrl.replace(/^\/learn-claude-code/, '')} ({annotations.length})
                 </div>
               )}
-              {annotations.map((annotation) => (
+              {(!collapsedPages.has(pageUrl) || tab === 'current') && annotations.map((annotation, idx) => (
                 <div
                   key={annotation.id}
                   onClick={() => onNavigate(annotation)}
@@ -294,7 +328,7 @@ export default function AnnotationPanel({
                     margin: '0.25rem 0',
                     background: 'var(--sl-color-gray-6)',
                     borderRadius: '0.5rem',
-                    borderLeft: '3px solid var(--sl-color-accent)',
+                    borderLeft: `3px solid ${HIGHLIGHT_COLORS[idx % HIGHLIGHT_COLORS.length].border}`,
                     cursor: 'pointer',
                     transition: 'background 0.15s',
                   }}
