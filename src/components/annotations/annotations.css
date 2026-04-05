@@ -4,15 +4,15 @@
   100% { outline: 3px solid transparent; outline-offset: 2px; }
 }
 
-mark[data-annotation-id].annotation-pulse {
+span[data-annotation-id].annotation-pulse {
   animation: annotation-pulse 0.75s ease-in-out 2;
 }
 
-mark[data-annotation-id] {
+span[data-annotation-id] {
   transition: filter 0.15s;
 }
 
-mark[data-annotation-id]:hover {
+span[data-annotation-id]:hover {
   filter: brightness(1.3);
 }
 

@@ -86,7 +86,7 @@ export default function AnnotationProvider({ children }: { children: React.React
   // Listen for clicks on existing highlights
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      const mark = (e.target as Element).closest?.('mark[data-annotation-id]');
+      const mark = (e.target as Element).closest?.('span[data-annotation-id]');
       if (!mark) return;
 
       const id = mark.getAttribute('data-annotation-id');
@@ -159,7 +159,7 @@ export default function AnnotationProvider({ children }: { children: React.React
 
   const handleEditAnnotation = useCallback(
     (annotation: Annotation) => {
-      const mark = document.querySelector(`mark[data-annotation-id="${annotation.id}"]`);
+      const mark = document.querySelector(`span[data-annotation-id="${annotation.id}"]`);
       if (mark) {
         const rect = mark.getBoundingClientRect();
         setPopover({
@@ -181,7 +181,7 @@ export default function AnnotationProvider({ children }: { children: React.React
       }
 
       // Scroll to the highlight
-      const mark = document.querySelector(`mark[data-annotation-id="${annotation.id}"]`);
+      const mark = document.querySelector(`span[data-annotation-id="${annotation.id}"]`);
       if (mark) {
         mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // Pulse animation

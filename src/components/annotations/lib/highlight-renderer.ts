@@ -9,7 +9,7 @@ export function applyHighlight(range: Range, annotationId: string, colorIndex: n
     const { node, startOffset, endOffset } = textNodes[i];
     const text = node.textContent ?? '';
 
-    const mark = document.createElement('mark');
+    const mark = document.createElement('span');
     mark.setAttribute('data-annotation-id', annotationId);
     mark.style.backgroundColor = color.bg;
     mark.style.borderBottom = `2px solid ${color.border}`;
@@ -34,7 +34,7 @@ export function applyHighlight(range: Range, annotationId: string, colorIndex: n
 }
 
 export function removeHighlight(annotationId: string): void {
-  const marks = document.querySelectorAll(`mark[data-annotation-id="${annotationId}"]`);
+  const marks = document.querySelectorAll(`span[data-annotation-id="${annotationId}"]`);
   for (const mark of marks) {
     const parent = mark.parentNode;
     if (!parent) continue;
@@ -49,7 +49,7 @@ export function removeHighlight(annotationId: string): void {
 }
 
 export function clearAllHighlights(): void {
-  const marks = document.querySelectorAll('mark[data-annotation-id]');
+  const marks = document.querySelectorAll('span[data-annotation-id]');
   for (const mark of marks) {
     const parent = mark.parentNode;
     if (!parent) continue;
