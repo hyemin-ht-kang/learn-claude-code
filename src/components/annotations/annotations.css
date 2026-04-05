@@ -1,0 +1,35 @@
+@keyframes annotation-pulse {
+  0% { outline: 3px solid rgba(250, 204, 21, 0.8); outline-offset: 2px; }
+  50% { outline: 3px solid rgba(250, 204, 21, 0.3); outline-offset: 4px; }
+  100% { outline: 3px solid transparent; outline-offset: 2px; }
+}
+
+mark[data-annotation-id].annotation-pulse {
+  animation: annotation-pulse 0.75s ease-in-out 2;
+}
+
+mark[data-annotation-id] {
+  transition: filter 0.15s;
+}
+
+mark[data-annotation-id]:hover {
+  filter: brightness(1.3);
+}
+
+/* Starlight's .right-sidebar is position:fixed with width:100%, overshooting
+   the viewport and blocking pointer events on the FAB/panel. Disable pointer
+   events on both the container and sidebar, re-enable on actual content. */
+.right-sidebar-container,
+.right-sidebar {
+  pointer-events: none;
+}
+
+.right-sidebar-container > .right-sidebar > * {
+  pointer-events: auto;
+}
+
+/* Hide the TOC sidebar when the annotation panel is open so it doesn't
+   bleed through (the panel can't escape .main-pane's stacking context). */
+.annotation-panel-open .right-sidebar-container {
+  visibility: hidden;
+}

@@ -1,0 +1,10 @@
+---
+import AnnotationRoot from '../annotations/AnnotationRoot';
+import '@astrojs/starlight/style/markdown.css';
+---
+
+<div class="sl-markdown-content">
+  <slot />
+</div>
+
+<AnnotationRoot client:load />

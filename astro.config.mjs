@@ -13,6 +13,9 @@ export default defineConfig({
       locales: {
         root: { label: '한국어', lang: 'ko' },
       },
+      components: {
+        MarkdownContent: './src/components/overrides/MarkdownContent.astro',
+      },
       sidebar: [
         { label: '01. 핵심 아키텍처', autogenerate: { directory: '01-core-architecture' } },
         { label: '02. 도구 시스템', autogenerate: { directory: '02-tool-system' } },
