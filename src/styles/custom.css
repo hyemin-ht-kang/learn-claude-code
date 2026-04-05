@@ -30,3 +30,6 @@
   border-bottom: 1px solid var(--sl-color-gray-5);
   padding-bottom: 0.5rem;
 }
+
+/* Annotation feature styles */
+@import '../components/annotations/annotations.css';
