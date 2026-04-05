@@ -275,7 +275,7 @@ export default function AnnotationPanel({
         </div>
 
         {/* Annotation list */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', padding: '0.5rem' }}>
           {displayAnnotations.length === 0 && (
             <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--sl-color-gray-4)', fontSize: '0.8125rem' }}>
               {tab === 'current' ? '이 페이지에 주석이 없습니다' : '주석이 없습니다'}

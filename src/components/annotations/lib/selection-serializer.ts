@@ -46,9 +46,7 @@ function getElementContainer(node: Node): { element: Element; textOffset: number
   let textOffset = 0;
   for (const child of Array.from(parent.childNodes)) {
     if (child === node) break;
-    if (child.nodeType === Node.TEXT_NODE) {
-      textOffset += (child.textContent ?? '').length;
-    }
+    textOffset += (child.textContent ?? '').length;
   }
 
   return { element: parent, textOffset };
